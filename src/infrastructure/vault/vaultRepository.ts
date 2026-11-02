@@ -1,0 +1,39 @@
+import type { VaultRepository } from '@/domain/ports'
+import { descomprimirGzip, comprimirGzip } from '@/infrastructure/compression'
+import { decifrarComChave, cifrarComChave } from '@/infrastructure/cripto/envelope'
+import { ChaveNecessariaError } from '@/infrastructure/cripto/erros'
+import * as drive from '../drive/api'
+import { parseManifesto, serializarManifesto } from './manifestoCodec'
+
+export interface DepsVaultRepository {
+  tokenProvider: () => Promise<string>
+  vaultFileId: string
+  obterChave: () => CryptoKey | undefined
+  obterEtag: () => string | undefined
+  definirEtag: (etag?: string) => void
+}
+
+export function criarDriveVaultRepository(deps: DepsVaultRepository): VaultRepository {
+  return {
+    async carregarManifesto() {
+      const token = await deps.tokenProvider()
+      const { bytes, etag } = await drive.baixarArquivoComEtag(token, deps.vaultFileId)
+      deps.definirEtag(etag)
+      const chave = deps.obterChave()
+      if (!chave) throw new ChaveNecessariaError()
+      const comprimido = await decifrarComChave(chave, bytes)
+      const claro = await descomprimirGzip(comprimido)
+      return parseManifesto(claro)
+    },
+    async salvarManifesto(manifesto) {
+      const token = await deps.tokenProvider()
+      const chave = deps.obterChave()
+      if (!chave) throw new ChaveNecessariaError()
+      const claro = serializarManifesto(manifesto)
+      const comprimido = await comprimirGzip(claro)
+      const envelope = await cifrarComChave(chave, comprimido)
+      const { etag } = await drive.atualizarArquivo(token, deps.vaultFileId, envelope, deps.obterEtag())
+      deps.definirEtag(etag)
+    },
+  }
+}

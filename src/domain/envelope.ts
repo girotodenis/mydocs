@@ -2,7 +2,7 @@ export const ENVELOPE_MAGIC = 'MYDOCS-VAULT1'
 
 export interface CabecalhoEnvelope {
   v: number
-  kdf: 'PBKDF2-SHA256'
+  kdf: 'PBKDF2-SHA256' | 'sessao'
   cipher: 'AES-256-GCM'
   iterations: number
   salt: string

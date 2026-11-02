@@ -37,3 +37,24 @@ export async function decifrarComSenha(senha: string, envelope: Uint8Array): Pro
   const chave = await derivarChave(senha, base64ParaBytes(cabecalho.salt), cabecalho.iterations)
   return decifrarGCM(chave, base64ParaBytes(cabecalho.iv), ciphertext, aadDoCabecalho(cabecalho))
 }
+
+export async function cifrarComChave(chave: CryptoKey, plaintext: Uint8Array): Promise<Uint8Array> {
+  const iv = randomBytes(12)
+  const cabecalho: CabecalhoEnvelope = {
+    v: 1,
+    kdf: 'sessao',
+    cipher: 'AES-256-GCM',
+    iterations: 0,
+    salt: '',
+    iv: bytesBase64(iv),
+  }
+  const ciphertext = await cifrarGCM(chave, iv, plaintext, aadDoCabecalho(cabecalho))
+  return montarEnvelope(cabecalho, ciphertext)
+}
+
+export async function decifrarComChave(chave: CryptoKey, envelope: Uint8Array): Promise<Uint8Array> {
+  const aberto = abrirEnvelope(envelope)
+  if (!aberto) throw new Error('Envelope inválido ou corrompido')
+  const { cabecalho, ciphertext } = aberto
+  return decifrarGCM(chave, base64ParaBytes(cabecalho.iv), ciphertext, aadDoCabecalho(cabecalho))
+}
