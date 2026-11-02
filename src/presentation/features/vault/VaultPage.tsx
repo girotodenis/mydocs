@@ -212,7 +212,13 @@ export function VaultPage() {
   }
 
   return (
-    <div>
+    <div
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => {
+        e.preventDefault()
+        void enviarArquivos(e.dataTransfer.files)
+      }}
+    >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
           <button type="button" onClick={() => setPastaAtual(null)} className="font-medium hover:text-brand-600">
