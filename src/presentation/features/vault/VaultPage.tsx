@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   ArrowUp,
   Download,
+  Eye,
   FilePlus,
   FileText,
   Folder,
@@ -320,6 +321,9 @@ export function VaultPage() {
                 {item.nome}
               </Link>
               <span className="hidden text-xs text-slate-400 sm:inline">{formatarBytes(item.tamanho)}</span>
+              <Link to={`/item/${item.id}`} className="p-1.5 text-slate-400 hover:text-brand-600" aria-label="Visualizar">
+                <Eye className="h-4 w-4" aria-hidden />
+              </Link>
               {item.mime === 'text/markdown' || item.mime === 'text/html' ? (
                 <Link to={`/editor/${item.id}`} className="p-1.5 text-slate-400 hover:text-brand-600" aria-label="Editar">
                   <Pencil className="h-4 w-4" aria-hidden />
