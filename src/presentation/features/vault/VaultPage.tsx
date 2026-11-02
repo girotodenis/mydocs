@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   ArrowUp,
   Download,
+  FilePlus,
   FileText,
   Folder,
   FolderPlus,
@@ -252,6 +253,13 @@ export function VaultPage() {
             <FolderPlus className="h-3.5 w-3.5" aria-hidden />
             Nova pasta
           </button>
+          <Link
+            to={pastaAtual ? `/editor?pasta=${pastaAtual}` : '/editor'}
+            className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            <FilePlus className="h-3.5 w-3.5" aria-hidden />
+            Nova nota
+          </Link>
           <button
             type="button"
             onClick={() => fileRef.current?.click()}

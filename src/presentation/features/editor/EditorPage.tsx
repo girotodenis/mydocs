@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { html } from '@codemirror/lang-html'
@@ -13,6 +13,8 @@ import { cn } from '@/presentation/cn'
 export function EditorPage() {
   const { itemId } = useParams<{ itemId: string }>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const pastaDestino = searchParams.get('pasta')
   const vault = useVault()
   const { theme } = useTheme()
   const item = useMemo(() => (itemId ? vault.manifesto?.itens.find((i) => i.id === itemId) : undefined), [itemId, vault.manifesto])
@@ -39,7 +41,7 @@ export function EditorPage() {
       const mime = tipo === 'html' ? 'text/html' : 'text/markdown'
       const bytes = new TextEncoder().encode(conteudo)
       if (item) await vault.atualizarItem(item.id, nome, mime, bytes)
-      else await vault.salvarNota(titulo, conteudo, tipo, null)
+      else await vault.salvarNota(titulo, conteudo, tipo, pastaDestino)
       navigate('/')
     } catch (e) {
       window.alert(e instanceof Error ? e.message : String(e))
