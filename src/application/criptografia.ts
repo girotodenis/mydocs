@@ -33,6 +33,11 @@ export async function desbloquear(ctx: ContextoVault, senha: string): Promise<bo
   const { bytes } = await drive.baixarArquivoComEtag(token, ctx.vaultId)
   const aberto = abrirEnvelope(bytes)
   if (!aberto) throw new Error('Manifesto inválido')
+  if (aberto.cabecalho.kdf === 'sessao' || !aberto.cabecalho.iterations) {
+    throw new Error(
+      'Este cofre usa um formato antigo. Abra-o no dispositivo onde foi criado e faça uma alteração para migrá-lo — ou crie um novo cofre.',
+    )
+  }
   await decifrarComSenha(senha, bytes) // lança se a senha estiver errada
 
   const salt = base64ParaBytes(aberto.cabecalho.salt || '')
