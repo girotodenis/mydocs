@@ -2,6 +2,7 @@ import type { VaultRepository } from '@/domain/ports'
 import { descomprimirGzip, comprimirGzip } from '@/infrastructure/compression'
 import { decifrarComChave, cifrarComChave } from '@/infrastructure/cripto/envelope'
 import { ChaveNecessariaError } from '@/infrastructure/cripto/erros'
+import { salvarManifestoCache } from '@/infrastructure/storage/cache'
 import * as drive from '../drive/api'
 import { parseManifesto, serializarManifesto } from './manifestoCodec'
 
@@ -19,6 +20,7 @@ export function criarDriveVaultRepository(deps: DepsVaultRepository): VaultRepos
       const token = await deps.tokenProvider()
       const { bytes, etag } = await drive.baixarArquivoComEtag(token, deps.vaultFileId)
       deps.definirEtag(etag)
+      await salvarManifestoCache(deps.vaultFileId, bytes)
       const chave = deps.obterChave()
       if (!chave) throw new ChaveNecessariaError()
       const comprimido = await decifrarComChave(chave, bytes)
@@ -34,6 +36,7 @@ export function criarDriveVaultRepository(deps: DepsVaultRepository): VaultRepos
       const envelope = await cifrarComChave(chave, comprimido)
       const { etag } = await drive.atualizarArquivo(token, deps.vaultFileId, envelope, deps.obterEtag())
       deps.definirEtag(etag)
+      await salvarManifestoCache(deps.vaultFileId, envelope)
     },
   }
 }

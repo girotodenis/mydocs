@@ -20,6 +20,14 @@ interface Registro {
 
 export async function gravarVerificador(vaultId: string, senha: string): Promise<void> {
   const salt = randomBytes(16)
+  await gravarVerificadorComSalt(vaultId, senha, salt)
+}
+
+export async function gravarVerificadorComSalt(
+  vaultId: string,
+  senha: string,
+  salt: Uint8Array,
+): Promise<void> {
   const iv = randomBytes(12)
   const chave = await derivarChave(senha, salt, ITERATIONS)
   const bloco = await cifrarGCM(chave, iv, PLAINTEXT, new Uint8Array(0))
@@ -30,6 +38,17 @@ export async function gravarVerificador(vaultId: string, senha: string): Promise
     bloco: bytesBase64(bloco),
   }
   localStorage.setItem(PREFIXO + vaultId, JSON.stringify(registro))
+}
+
+export function obterSaltVerificador(vaultId: string): { salt: Uint8Array; iterations: number } | null {
+  const raw = localStorage.getItem(PREFIXO + vaultId)
+  if (!raw) return null
+  try {
+    const registro = JSON.parse(raw) as Registro
+    return { salt: base64ParaBytes(registro.salt), iterations: registro.iterations }
+  } catch {
+    return null
+  }
 }
 
 export async function validarSenhaOffline(vaultId: string, senha: string): Promise<boolean> {
