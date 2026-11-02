@@ -6,6 +6,7 @@ export interface DriveFileInfo {
 }
 
 const BASE = 'https://www.googleapis.com/drive/v3'
+const UPLOAD_BASE = 'https://www.googleapis.com/upload/drive/v3'
 
 async function fetchComTimeout(url: string, init: RequestInit, timeoutMs = 15_000): Promise<Response> {
   const ctrl = new AbortController()
@@ -76,7 +77,7 @@ export async function criarArquivoMultipart(
   corpo.set(bytes, pre.length)
   corpo.set(pos, pre.length + bytes.length)
 
-  const res = await fetchComTimeout(`${BASE}/files?uploadType=multipart`, {
+  const res = await fetchComTimeout(`${UPLOAD_BASE}/files?uploadType=multipart`, {
     method: 'POST',
     headers: { ...auth(token), 'Content-Type': `multipart/related; boundary=${boundary}` },
     body: corpo.buffer,
@@ -107,7 +108,7 @@ export async function atualizarArquivo(
     'Content-Type': 'application/octet-stream',
   }
   if (etag) headers['If-Match'] = etag
-  const res = await fetchComTimeout(`${BASE}/files/${fileId}?uploadType=media`, {
+  const res = await fetchComTimeout(`${UPLOAD_BASE}/files/${fileId}?uploadType=media`, {
     method: 'PATCH',
     headers,
     body: new Uint8Array(bytes).buffer,
