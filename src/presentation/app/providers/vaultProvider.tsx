@@ -41,6 +41,7 @@ export interface ArquivoUpload {
 interface VaultContextValue {
   status: StatusVault
   vaultId: string
+  folderId: string
   manifesto: Manifesto | null
   email: string | null
   autenticado: boolean
@@ -335,6 +336,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     () => ({
       status,
       vaultId: vaultIdRef.current,
+      folderId: folderIdRef.current,
       manifesto,
       email: auth.email,
       autenticado: Boolean(auth.token),

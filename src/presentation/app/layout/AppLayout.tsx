@@ -1,4 +1,4 @@
-import { FolderLock, Inbox, Lock, LogOut, Moon, Sun, Wallet } from 'lucide-react'
+import { ExternalLink, FolderLock, Inbox, Lock, LogOut, Moon, Sun, Wallet } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { cn } from '@/presentation/cn'
 import { useTheme } from '@/presentation/app/providers/themeContext'
@@ -68,6 +68,23 @@ export function AppLayout() {
                   </NavLink>
                 </li>
               ))}
+
+              {vault.folderId ? (
+                <li>
+                  <a
+                    href={`https://drive.google.com/drive/folders/${vault.folderId}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={cn(
+                      navItemClass,
+                      'border border-slate-200 text-slate-600 hover:bg-brand-50 hover:text-brand-700 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800',
+                    )}
+                  >
+                    <ExternalLink className="h-4 w-4" aria-hidden />
+                    Drive
+                  </a>
+                </li>
+              ) : null}
 
               {vault.status === 'pronto' ? (
                 <li>
