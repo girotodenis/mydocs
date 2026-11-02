@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { ArrowLeft, Download, Pencil, Share2, Trash2 } from 'lucide-react'
+import type { TipoPreview } from '@/domain/preview'
 import { useVault } from '@/presentation/app/providers/vaultProvider'
 
 export function ViewerPage() {
@@ -12,6 +13,7 @@ export function ViewerPage() {
   const item = useMemo(() => vault.manifesto?.itens.find((i) => i.id === itemId), [vault.manifesto, itemId])
   const [bytes, setBytes] = useState<Uint8Array | null>(null)
   const [url, setUrl] = useState<string | null>(null)
+  const [tipo, setTipo] = useState<TipoPreview | null>(null)
 
   useEffect(() => {
     let active = true
@@ -19,7 +21,8 @@ export function ViewerPage() {
       void vault.abrirItem(item).then((r) => {
         if (!active) return
         setBytes(r.bytes)
-        if (r.tipo === 'imagem') {
+        setTipo(r.tipo)
+        if (r.tipo === 'imagem' || r.tipo === 'video' || r.tipo === 'audio' || r.tipo === 'pdf') {
           const blob = new Blob([new Uint8Array(r.bytes)], { type: item.mime })
           setUrl(URL.createObjectURL(blob))
         }
@@ -37,7 +40,6 @@ export function ViewerPage() {
   }
 
   const texto = bytes ? new TextDecoder().decode(bytes) : ''
-  const tipo = item.mime.startsWith('image/') ? 'imagem' : item.mime === 'text/markdown' ? 'markdown' : item.mime === 'text/html' ? 'html' : 'texto'
   const editavel = item.mime.startsWith('text/') || item.mime === 'application/json' || item.mime === 'application/xml'
 
   const baixar = () => {
@@ -91,6 +93,12 @@ export function ViewerPage() {
         <p className="text-slate-500">Carregando…</p>
       ) : tipo === 'imagem' && url ? (
         <img src={url} alt={item.nome} className="mx-auto max-h-[70vh] rounded-xl border border-slate-200 dark:border-slate-800" />
+      ) : tipo === 'video' && url ? (
+        <video controls src={url} className="mx-auto max-h-[70vh] w-full rounded-xl border border-slate-200 dark:border-slate-800" />
+      ) : tipo === 'audio' && url ? (
+        <audio controls src={url} className="w-full" />
+      ) : tipo === 'pdf' && url ? (
+        <iframe title={item.nome} src={url} className="h-[70vh] w-full rounded-xl border border-slate-200 bg-white dark:border-slate-800" />
       ) : tipo === 'markdown' ? (
         <article className="max-w-none text-slate-800 dark:text-slate-200">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{texto}</ReactMarkdown>

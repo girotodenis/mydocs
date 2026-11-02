@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Item, Manifesto, PastaId } from '@/domain/entities'
 import type { TipoNota } from '@/domain/editor'
+import type { TipoPreview } from '@/domain/preview'
 import type { ContextoVault } from '@/application/contexto'
 import * as aplicacaoCripto from '@/application/criptografia'
 import * as aplicacaoEditor from '@/application/editor'
@@ -59,7 +60,7 @@ interface VaultContextValue {
   renomearItem(id: string, nome: string): Promise<void>
   moverItem(id: string, pastaId: PastaId | null): Promise<void>
   excluirItem(id: string): Promise<void>
-  abrirItem(item: Item): Promise<{ tipo: string; bytes: Uint8Array }>
+  abrirItem(item: Item): Promise<{ tipo: TipoPreview; bytes: Uint8Array }>
   compartilhar(item: Item): Promise<void>
   salvarNota(titulo: string, conteudo: string, tipo: TipoNota, pastaId: PastaId | null): Promise<void>
   processarRecebidos(pastaId: PastaId | null): Promise<number>

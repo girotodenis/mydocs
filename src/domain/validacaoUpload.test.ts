@@ -13,7 +13,7 @@ describe('validarUpload', () => {
   })
 
   it('recusa mime não suportado', () => {
-    const r = validarUpload('video.mp4', 1000, 'video/mp4')
+    const r = validarUpload('arquivo.zip', 1000, 'application/zip')
     expect(r.ok).toBe(false)
   })
 

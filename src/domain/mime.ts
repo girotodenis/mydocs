@@ -10,6 +10,14 @@ export const MIME_PERMITIDO = [
   'text/csv',
   'application/json',
   'application/xml',
+  'application/pdf',
+  'video/mp4',
+  'video/webm',
+  'audio/mpeg',
+  'audio/mp4',
+  'audio/ogg',
+  'audio/wav',
+  'audio/webm',
 ] as const
 
 export function mimeDeNome(nome: string): string {
@@ -41,6 +49,20 @@ export function mimeDeNome(nome: string): string {
       return 'application/json'
     case 'xml':
       return 'application/xml'
+    case 'pdf':
+      return 'application/pdf'
+    case 'mp4':
+      return 'video/mp4'
+    case 'webm':
+      return 'video/webm'
+    case 'mp3':
+      return 'audio/mpeg'
+    case 'm4a':
+      return 'audio/mp4'
+    case 'ogg':
+      return 'audio/ogg'
+    case 'wav':
+      return 'audio/wav'
     default:
       return 'application/octet-stream'
   }
