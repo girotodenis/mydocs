@@ -12,7 +12,7 @@ export interface ItemAberto {
 }
 
 export async function abrirItem(ctx: ContextoVault, item: Item): Promise<ItemAberto> {
-  const chave = ctx.obterChave()
+  const chave = ctx.obterSessao()?.chave
   if (!chave) throw new ChaveNecessariaError()
 
   let envelope = lerItemCache(ctx.vaultId, item.id)

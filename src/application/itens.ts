@@ -29,7 +29,7 @@ export async function enviarArquivo(ctx: ContextoVault, arquivo: ArquivoEntrada)
   const v = validarUpload(arquivo.nome, arquivo.bytes.byteLength, arquivo.mime, MAX_FILE_BYTES)
   if (!v.ok) throw new Error(v.motivo)
 
-  const chave = ctx.obterChave()
+  const chave = ctx.obterSessao()?.chave
   if (!chave) throw new ChaveNecessariaError()
 
   const itemId = gerarId()
@@ -80,7 +80,7 @@ export async function atualizarItemConteudo(
   mime: string,
   bytes: Uint8Array,
 ): Promise<void> {
-  const chave = ctx.obterChave()
+  const chave = ctx.obterSessao()?.chave
   if (!chave) throw new ChaveNecessariaError()
 
   const m = manifestoAtual(ctx)

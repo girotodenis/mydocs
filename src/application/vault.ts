@@ -1,6 +1,7 @@
 import type { Manifesto } from '@/domain/entities'
 import { comprimirGzip } from '@/infrastructure/compression'
-import { cifrarComChave } from '@/infrastructure/cripto/envelope'
+import { cifrarComChaveComSalt } from '@/infrastructure/cripto/envelope'
+import type { SessaoCripto } from '@/infrastructure/cripto/chaveSessao'
 import { derivarChave, randomBytes } from '@/infrastructure/cripto/webCrypto'
 import { gravarVerificadorComSalt } from '@/infrastructure/cripto/verificadorLocal'
 import { ITERACOES_KDF } from '@/infrastructure/cripto/constantes'
@@ -12,7 +13,7 @@ import type { ContextoVault } from './contexto'
 export interface NovoCofre {
   vaultId: string
   folderId: string
-  chave: CryptoKey
+  sessao: SessaoCripto
 }
 
 export async function criarNovoCofre(token: string, senha: string, folderNome: string): Promise<NovoCofre> {
@@ -23,11 +24,11 @@ export async function criarNovoCofre(token: string, senha: string, folderNome: s
   const manifesto = manifestoVazio()
   const claro = serializarManifesto(manifesto)
   const comprimido = await comprimirGzip(claro)
-  const envelope = await cifrarComChave(chave, comprimido)
+  const envelope = await cifrarComChaveComSalt(chave, salt, ITERACOES_KDF, comprimido)
   const vaultId = await criarArquivoMultipart(token, 'mydocs.manifest', envelope, folderId)
 
   await gravarVerificadorComSalt(vaultId, senha, salt)
-  return { vaultId, folderId, chave }
+  return { vaultId, folderId, sessao: { chave, salt, iterations: ITERACOES_KDF } }
 }
 
 export async function carregarVault(ctx: ContextoVault): Promise<Manifesto> {

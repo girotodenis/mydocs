@@ -58,3 +58,22 @@ export async function decifrarComChave(chave: CryptoKey, envelope: Uint8Array): 
   const { cabecalho, ciphertext } = aberto
   return decifrarGCM(chave, base64ParaBytes(cabecalho.iv), ciphertext, aadDoCabecalho(cabecalho))
 }
+
+export async function cifrarComChaveComSalt(
+  chave: CryptoKey,
+  salt: Uint8Array,
+  iterations: number,
+  plaintext: Uint8Array,
+): Promise<Uint8Array> {
+  const iv = randomBytes(12)
+  const cabecalho: CabecalhoEnvelope = {
+    v: 1,
+    kdf: 'PBKDF2-SHA256',
+    cipher: 'AES-256-GCM',
+    iterations,
+    salt: bytesBase64(salt),
+    iv: bytesBase64(iv),
+  }
+  const ciphertext = await cifrarGCM(chave, iv, plaintext, aadDoCabecalho(cabecalho))
+  return montarEnvelope(cabecalho, ciphertext)
+}

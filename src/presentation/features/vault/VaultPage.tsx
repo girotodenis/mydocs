@@ -160,6 +160,9 @@ export function VaultPage() {
     return (
       <div className="mx-auto max-w-md">
         <h1 className="text-center text-2xl font-bold text-slate-900 dark:text-slate-100">Cofre</h1>
+        {vault.erro ? (
+          <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{vault.erro}</p>
+        ) : null}
         <div className="mt-6 space-y-4">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
             <h2 className="font-semibold text-slate-900 dark:text-slate-100">Abrir cofre existente</h2>
@@ -227,6 +230,9 @@ export function VaultPage() {
         >
           Desbloquear
         </button>
+        {vault.erro ? (
+          <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{vault.erro}</p>
+        ) : null}
       </div>
     )
   }

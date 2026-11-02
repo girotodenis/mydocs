@@ -12,7 +12,7 @@ import * as aplicacaoRecebidos from '@/application/recebidos'
 import * as aplicacaoShare from '@/application/share'
 import * as aplicacaoSync from '@/application/sync'
 import * as aplicacaoVault from '@/application/vault'
-import { guardarChave, obterChave, removerChave } from '@/infrastructure/cripto/chaveSessao'
+import { guardarSessao, obterSessao, removerSessao } from '@/infrastructure/cripto/chaveSessao'
 import { listarArquivos } from '@/infrastructure/drive/api'
 import { garantirPastaApp } from '@/infrastructure/drive/pasta'
 import { criarSharePort } from '@/infrastructure/share/navegadorShare'
@@ -115,7 +115,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         return criarDriveVaultRepository({
           tokenProvider: () => auth.tokenProvider(),
           vaultFileId: vaultIdRef.current,
-          obterChave: () => obterChave(vaultIdRef.current),
+          obterSessao: () => obterSessao(vaultIdRef.current),
           obterEtag: () => etagRef.current,
           definirEtag: (etag?: string) => {
             etagRef.current = etag
@@ -124,9 +124,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       },
       sharePort,
       shareTargetPort,
-      obterChave: () => obterChave(vaultIdRef.current),
-      definirChave: (chave) => guardarChave(vaultIdRef.current, chave),
-      limparChave: () => removerChave(vaultIdRef.current),
+      obterSessao: () => obterSessao(vaultIdRef.current),
+      definirSessao: (sessao) => guardarSessao(vaultIdRef.current, sessao),
+      limparSessao: () => removerSessao(vaultIdRef.current),
       obterEtag: () => etagRef.current,
       definirEtag: (etag?: string) => {
         etagRef.current = etag
@@ -152,7 +152,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         const novo = await aplicacaoVault.criarNovoCofre(token, senha, FOLDER_NAME)
         vaultIdRef.current = novo.vaultId
         folderIdRef.current = novo.folderId
-        guardarChave(novo.vaultId, novo.chave)
+        guardarSessao(novo.vaultId, novo.sessao)
         salvarWorkspace()
         await iniciarCache()
         await iniciarOutbox()
@@ -224,7 +224,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     auth.logout()
-    removerChave(vaultIdRef.current)
+    removerSessao(vaultIdRef.current)
     vaultIdRef.current = ''
     folderIdRef.current = ''
     etagRef.current = undefined
