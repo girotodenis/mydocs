@@ -71,3 +71,27 @@ export async function excluirItemUseCase(ctx: ContextoVault, id: ItemId): Promis
     await ctx.itemStore.excluir(item.blobId)
   }
 }
+
+export async function atualizarItemConteudo(
+  ctx: ContextoVault,
+  id: ItemId,
+  nome: string,
+  mime: string,
+  bytes: Uint8Array,
+): Promise<void> {
+  const chave = ctx.obterChave()
+  if (!chave) throw new ChaveNecessariaError()
+
+  const m = manifestoAtual(ctx)
+  const item = m.itens.find((i) => i.id === id)
+  if (!item) throw new Error('Item não encontrado')
+
+  const comprimido = await comprimirGzip(bytes)
+  const envelope = await cifrarComChave(chave, comprimido)
+  const blobId = await ctx.itemStore.enviar(id, envelope, mime)
+  await salvarItemCache(ctx.vaultId, id, envelope)
+  if (item.blobId) await ctx.itemStore.excluir(item.blobId)
+
+  const atualizado: Item = { ...item, nome, mime, tamanho: bytes.byteLength, blobId, atualizadoEm: clockDoNavegador.agoraIso() }
+  await persistirManifesto(ctx, { ...m, itens: m.itens.map((i) => (i.id === id ? atualizado : i)) })
+}
