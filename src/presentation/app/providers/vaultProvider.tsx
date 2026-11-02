@@ -37,6 +37,7 @@ export interface ArquivoUpload {
 
 interface VaultContextValue {
   status: StatusVault
+  vaultId: string
   manifesto: Manifesto | null
   email: string | null
   autenticado: boolean
@@ -292,6 +293,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const value = useMemo<VaultContextValue>(
     () => ({
       status,
+      vaultId: vaultIdRef.current,
       manifesto,
       email: auth.email,
       autenticado: Boolean(auth.token),

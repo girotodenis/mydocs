@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowUp,
@@ -24,9 +24,26 @@ import { useVault } from '@/presentation/app/providers/vaultProvider'
 export function VaultPage() {
   const vault = useVault()
   const [senha, setSenha] = useState('')
-  const [pastaAtual, setPastaAtual] = useState<PastaId | null>(null)
+  const [pastaAtual, setPastaAtualState] = useState<PastaId | null>(null)
   const [carregando, setCarregando] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  function definirPasta(p: PastaId | null) {
+    const key = `mydocs:pasta:${vault.vaultId}`
+    if (p) localStorage.setItem(key, p)
+    else localStorage.removeItem(key)
+    setPastaAtualState(p)
+  }
+
+  useEffect(() => {
+    const key = `mydocs:pasta:${vault.vaultId}`
+    const saved = localStorage.getItem(key)
+    if (saved && vault.manifesto?.pastas.some((p) => p.id === saved)) {
+      setPastaAtualState(saved)
+    } else {
+      setPastaAtualState(null)
+    }
+  }, [vault.vaultId, vault.manifesto])
 
   const pastas = useMemo(() => (vault.manifesto ? subpastasDe(vault.manifesto, pastaAtual) : []), [vault.manifesto, pastaAtual])
   const itens = useMemo(() => (vault.manifesto ? itensDaPasta(vault.manifesto, pastaAtual) : []), [vault.manifesto, pastaAtual])
@@ -222,13 +239,13 @@ export function VaultPage() {
     >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-          <button type="button" onClick={() => setPastaAtual(null)} className="font-medium hover:text-brand-600">
+          <button type="button" onClick={() => definirPasta(null)} className="font-medium hover:text-brand-600">
             Raiz
           </button>
           {caminho.map((p) => (
             <span key={p.id} className="flex items-center gap-2">
               <span className="text-slate-400">/</span>
-              <button type="button" onClick={() => setPastaAtual(p.id)} className="font-medium hover:text-brand-600">
+              <button type="button" onClick={() => definirPasta(p.id)} className="font-medium hover:text-brand-600">
                 {p.nome}
               </button>
             </span>
@@ -238,7 +255,7 @@ export function VaultPage() {
           {pastaAtual ? (
             <button
               type="button"
-              onClick={() => setPastaAtual(caminho[caminho.length - 2]?.id ?? null)}
+              onClick={() => definirPasta(caminho[caminho.length - 2]?.id ?? null)}
               className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
             >
               <ArrowUp className="h-3.5 w-3.5" aria-hidden />
@@ -282,7 +299,7 @@ export function VaultPage() {
               className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900"
             >
               <Folder className="h-5 w-5 text-brand-500" aria-hidden />
-              <button type="button" onClick={() => setPastaAtual(p.id)} className="flex-1 text-left font-medium text-slate-900 hover:text-brand-600 dark:text-slate-100">
+              <button type="button" onClick={() => definirPasta(p.id)} className="flex-1 text-left font-medium text-slate-900 hover:text-brand-600 dark:text-slate-100">
                 {p.nome}
               </button>
               <button type="button" onClick={() => renomearPasta(p.id, p.nome)} className="p-1.5 text-slate-400 hover:text-brand-600" aria-label="Renomear">
