@@ -1,6 +1,13 @@
 import type { PastaId } from '@/domain/entities'
+import { mimeDeNome, MIME_PERMITIDO } from '@/domain/mime'
 import type { ContextoVault } from './contexto'
 import { enviarArquivo } from './itens'
+
+function mimeResolvido(mime: string, nome: string): string {
+  const permitidos = MIME_PERMITIDO as readonly string[]
+  if (permitidos.includes(mime)) return mime
+  return mimeDeNome(nome)
+}
 
 export async function processarRecebidos(ctx: ContextoVault, pastaId: PastaId | null): Promise<number> {
   const recebidos = await ctx.shareTargetPort.lerRecebidos()
@@ -8,7 +15,7 @@ export async function processarRecebidos(ctx: ContextoVault, pastaId: PastaId | 
   for (const arquivo of recebidos.files) {
     await enviarArquivo(ctx, {
       nome: arquivo.nome,
-      mime: arquivo.mime,
+      mime: mimeResolvido(arquivo.mime, arquivo.nome),
       bytes: arquivo.bytes,
       pastaId,
     })

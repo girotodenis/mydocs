@@ -88,6 +88,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const folderIdRef = useRef('')
   const etagRef = useRef<string | undefined>(undefined)
   const manifestoRef = useRef<Manifesto | null>(null)
+  const importouRecebidosRef = useRef(false)
 
   const sharePort = useMemo(() => criarSharePort(), [])
   const shareTargetPort = useMemo(() => criarShareTargetPort(), [])
@@ -291,6 +292,20 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setPendentes(contarPendencias())
   }, [manifesto])
+
+  // Importa automaticamente arquivos compartilhados (Web Share Target) assim
+  // que o cofre é desbloqueado e o manifesto carregado.
+  useEffect(() => {
+    if (status !== 'pronto') {
+      importouRecebidosRef.current = false
+      return
+    }
+    if (importouRecebidosRef.current) return
+    importouRecebidosRef.current = true
+    void aplicacaoRecebidos.processarRecebidos(ctx, null).catch(() => {
+      /* pendências ficam para a tela de Recebidos */
+    })
+  }, [status, ctx])
 
   const value = useMemo<VaultContextValue>(
     () => ({
