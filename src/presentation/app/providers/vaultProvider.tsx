@@ -48,8 +48,7 @@ interface VaultContextValue {
   pendentes: number
   login(): Promise<void>
   logout(): void
-  criarCofre(senha: string): Promise<void>
-  abrirCofre(senha: string): Promise<void>
+  entrarNoCofre(senha: string): Promise<void>
   desbloquear(senha: string): Promise<boolean>
   bloquear(): void
   criarPasta(nome: string, parentId: PastaId | null): Promise<void>
@@ -145,28 +144,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(WORKSPACE_KEY, JSON.stringify({ vaultId: vaultIdRef.current, folderId: folderIdRef.current }))
   }
 
-  const criarCofre = useCallback(
-    async (senha: string) => {
-      setErro(null)
-      try {
-        const token = await auth.tokenProvider()
-        const novo = await aplicacaoVault.criarNovoCofre(token, senha, FOLDER_NAME)
-        vaultIdRef.current = novo.vaultId
-        folderIdRef.current = novo.folderId
-        guardarSessao(novo.vaultId, novo.sessao)
-        salvarWorkspace()
-        await iniciarCache()
-        await iniciarOutbox()
-        await aplicacaoVault.carregarVault(ctx)
-        setStatus('pronto')
-      } catch (e) {
-        setErro(mensagem(e))
-      }
-    },
-    [auth, ctx],
-  )
-
-  const abrirCofre = useCallback(
+  const entrarNoCofre = useCallback(
     async (senha: string) => {
       setErro(null)
       try {
@@ -174,7 +152,22 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         const folderId = await garantirPastaApp(token, FOLDER_NAME)
         const arquivos = await listarArquivos(token, folderId)
         const manifest = arquivos.find((a) => a.name === 'mydocs.manifest')
-        if (!manifest) throw new Error('Nenhum cofre encontrado na sua conta. Crie um novo.')
+
+        if (!manifest) {
+          // Cria um cofre novo nesta conta.
+          const novo = await aplicacaoVault.criarNovoCofre(token, senha, FOLDER_NAME)
+          vaultIdRef.current = novo.vaultId
+          folderIdRef.current = novo.folderId
+          guardarSessao(novo.vaultId, novo.sessao)
+          salvarWorkspace()
+          await iniciarCache()
+          await iniciarOutbox()
+          await aplicacaoVault.carregarVault(ctx)
+          setStatus('pronto')
+          return
+        }
+
+        // Abre o cofre existente.
         vaultIdRef.current = manifest.id
         folderIdRef.current = folderId
         salvarWorkspace()
@@ -319,8 +312,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       pendentes,
       login: auth.login,
       logout,
-      criarCofre,
-      abrirCofre,
+      entrarNoCofre,
       desbloquear,
       bloquear,
       criarPasta,
@@ -347,8 +339,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       erro,
       pendentes,
       logout,
-      criarCofre,
-      abrirCofre,
+      entrarNoCofre,
       desbloquear,
       bloquear,
       criarPasta,

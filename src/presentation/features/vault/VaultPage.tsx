@@ -156,63 +156,16 @@ export function VaultPage() {
     )
   }
 
-  if (vault.status === 'sem-cofre') {
-    return (
-      <div className="mx-auto max-w-md">
-        <h1 className="text-center text-2xl font-bold text-slate-900 dark:text-slate-100">Cofre</h1>
-        {vault.erro ? (
-          <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{vault.erro}</p>
-        ) : null}
-        <div className="mt-6 space-y-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-            <h2 className="font-semibold text-slate-900 dark:text-slate-100">Abrir cofre existente</h2>
-            <input
-              type="password"
-              value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-              placeholder="Senha"
-              className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-            />
-            <button
-              type="button"
-              disabled={carregando}
-              onClick={() => void comCarregando(() => vault.abrirCofre(senha))}
-              className="mt-3 w-full rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white"
-            >
-              Abrir
-            </button>
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-            <h2 className="font-semibold text-slate-900 dark:text-slate-100">Criar novo cofre</h2>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Escolha uma senha forte. Não há recuperação.</p>
-            <input
-              type="password"
-              value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-              placeholder="Senha"
-              className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-            />
-            <button
-              type="button"
-              disabled={carregando}
-              onClick={() => void comCarregando(() => vault.criarCofre(senha))}
-              className="mt-3 w-full rounded-lg bg-gradient-to-r from-brand-500 to-brand-700 px-4 py-2 text-sm font-semibold text-white"
-            >
-              Criar cofre
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (vault.status === 'bloqueado') {
+  if (vault.status === 'sem-cofre' || vault.status === 'bloqueado') {
     return (
       <div className="mx-auto max-w-md">
         <h1 className="text-center text-2xl font-bold text-slate-900 dark:text-slate-100">
           <Lock className="mr-2 inline h-5 w-5" aria-hidden />
-          Cofre bloqueado
+          Cofre
         </h1>
+        <p className="mt-1 text-center text-xs text-slate-500 dark:text-slate-400">
+          Digite sua senha para entrar. Se o cofre ainda não existir, ele será criado agora.
+        </p>
         <input
           type="password"
           value={senha}
@@ -223,12 +176,10 @@ export function VaultPage() {
         <button
           type="button"
           disabled={carregando}
-          onClick={() => void comCarregando(async () => {
-            await vault.desbloquear(senha)
-          })}
+          onClick={() => void comCarregando(() => vault.entrarNoCofre(senha))}
           className="mt-3 w-full rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white"
         >
-          Desbloquear
+          Entrar
         </button>
         {vault.erro ? (
           <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{vault.erro}</p>
