@@ -35,7 +35,7 @@ export function RecebidosPage() {
       </span>
       <h1 className="mt-4 text-2xl font-bold text-slate-900 dark:text-slate-100">Recebidos</h1>
       <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-        Arquivos compartilhados de outros aplicativos são importados automaticamente para a raiz do cofre.
+        Arquivos, textos e links compartilhados são importados automaticamente para a raiz do cofre.
       </p>
       <button
         type="button"

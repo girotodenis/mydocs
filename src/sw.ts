@@ -37,12 +37,21 @@ function bytesParaBase64(bytes: ArrayBuffer): string {
   return btoa(bin)
 }
 
+function sanitizarNome(nome: string): string {
+  return nome
+    .replace(/[\\/:*?"<>|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80)
+}
+
 async function processarShare(request: Request): Promise<Response> {
   try {
     const formData = await request.formData()
     const db = await abrirDb()
     const tx = db.transaction(INBOX_STORE, 'readwrite')
     const store = tx.objectStore(INBOX_STORE)
+
     const files = formData.getAll('file') as File[]
     for (const file of files) {
       const buffer = await file.arrayBuffer()
@@ -55,6 +64,34 @@ async function processarShare(request: Request): Promise<Response> {
         crypto.randomUUID(),
       )
     }
+
+    // Texto e/ou link compartilhados viram uma nota no cofre.
+    const title = typeof formData.get('title') === 'string' ? (formData.get('title') as string) : ''
+    const text = typeof formData.get('text') === 'string' ? (formData.get('text') as string) : ''
+    const url = typeof formData.get('url') === 'string' ? (formData.get('url') as string) : ''
+    if (text || url) {
+      let nome: string
+      let mime: string
+      let conteudo: string
+      if (url) {
+        nome = `${sanitizarNome(title) || 'link'}.md`
+        mime = 'text/markdown'
+        conteudo = text ? `${text}\n\n[${title || url}](${url})` : `[${title || url}](${url})`
+      } else {
+        nome = `${sanitizarNome(title) || 'nota'}.txt`
+        mime = 'text/plain'
+        conteudo = text
+      }
+      store.put(
+        JSON.stringify({
+          nome,
+          mime,
+          bytesB64: bytesParaBase64(new TextEncoder().encode(conteudo).buffer),
+        }),
+        crypto.randomUUID(),
+      )
+    }
+
     await new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve()
       tx.onerror = () => reject(tx.error)
