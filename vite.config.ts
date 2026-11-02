@@ -7,14 +7,15 @@ const manifest = {
   name: 'MyDocs',
   short_name: 'MyDocs',
   description: 'Cofre pessoal de arquivos criptografados no Google Drive',
+  lang: 'pt-BR',
   theme_color: '#2563eb',
   background_color: '#f8fafc',
   display: 'standalone',
-  start_url: '/',
-  scope: '/',
+  start_url: '/mydocs/',
+  scope: '/mydocs/',
   icons: [{ src: 'icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' }],
   share_target: {
-    action: '/share-target',
+    action: '/mydocs/share-target',
     method: 'POST',
     enctype: 'multipart/form-data',
     params: {
@@ -27,6 +28,9 @@ const manifest = {
 } as ManifestOptions
 
 export default defineConfig({
+  // Obrigatório para GitHub Pages: caminho base do projeto.
+  base: '/mydocs/',
+
   plugins: [
     react(),
     VitePWA({
@@ -36,6 +40,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],
       manifest,
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+      },
       devOptions: { enabled: false },
     }),
   ],

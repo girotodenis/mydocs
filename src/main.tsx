@@ -12,7 +12,7 @@ createRoot(document.getElementById('root')!).render(
     <ThemeProvider>
       <AuthProvider>
         <VaultProvider>
-          <BrowserRouter>
+          <BrowserRouter basename="/mydocs">
             <App />
           </BrowserRouter>
         </VaultProvider>

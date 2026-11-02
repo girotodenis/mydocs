@@ -1,9 +1,19 @@
 /// <reference lib="webworker" />
-import { precacheAndRoute } from 'workbox-precaching'
+import { createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching'
+import { NavigationRoute, registerRoute } from 'workbox-routing'
 
 declare let self: ServiceWorkerGlobalScope
 
+const GOOGLE_ORIGINS_REGEX = /^https:\/\/(?:accounts|apis|www)\.googleapis?\.com\/.*/i
+
 precacheAndRoute(self.__WB_MANIFEST)
+
+// SPA fallback dentro do subdiretório do GitHub Pages (sem cachear os domínios do Google).
+registerRoute(
+  new NavigationRoute(createHandlerBoundToURL('/mydocs/index.html'), {
+    denylist: [GOOGLE_ORIGINS_REGEX],
+  }),
+)
 
 const INBOX_DB = 'mydocs'
 const INBOX_STORE = 'inbox'
