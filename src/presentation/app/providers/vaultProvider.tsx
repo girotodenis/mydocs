@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Item, Manifesto, PastaId } from '@/domain/entities'
+import type { TipoNota } from '@/domain/editor'
 import type { ContextoVault } from '@/application/contexto'
 import * as aplicacaoCripto from '@/application/criptografia'
 import * as aplicacaoEditor from '@/application/editor'
@@ -60,7 +61,7 @@ interface VaultContextValue {
   excluirItem(id: string): Promise<void>
   abrirItem(item: Item): Promise<{ tipo: string; bytes: Uint8Array }>
   compartilhar(item: Item): Promise<void>
-  salvarNota(titulo: string, conteudo: string, tipo: 'markdown' | 'html', pastaId: PastaId | null): Promise<void>
+  salvarNota(titulo: string, conteudo: string, tipo: TipoNota, pastaId: PastaId | null): Promise<void>
   processarRecebidos(pastaId: PastaId | null): Promise<number>
   sincronizar(): Promise<number>
 }
@@ -272,7 +273,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const abrirItem = useCallback((item: Item) => aplicacaoPreview.abrirItem(ctx, item), [ctx])
   const compartilhar = useCallback((item: Item) => aplicacaoShare.compartilharItem(ctx, item), [ctx])
   const salvarNota = useCallback(
-    (titulo: string, conteudo: string, tipo: 'markdown' | 'html', pastaId: PastaId | null) =>
+    (titulo: string, conteudo: string, tipo: TipoNota, pastaId: PastaId | null) =>
       aplicacaoEditor.salvarNota(ctx, titulo, conteudo, tipo, pastaId),
     [ctx],
   )

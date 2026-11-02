@@ -1,8 +1,10 @@
-export type TipoNota = 'markdown' | 'html'
+export type TipoNota = 'markdown' | 'html' | 'text'
 
 export function tipoNotaDe(nome: string): TipoNota {
   const ext = nome.slice(nome.lastIndexOf('.') + 1).toLowerCase()
-  return ext === 'html' || ext === 'htm' ? 'html' : 'markdown'
+  if (ext === 'html' || ext === 'htm') return 'html'
+  if (ext === 'md' || ext === 'markdown') return 'markdown'
+  return 'text'
 }
 
 export function nomeNota(titulo: string, tipo: TipoNota): string {
@@ -12,5 +14,6 @@ export function nomeNota(titulo: string, tipo: TipoNota): string {
       .replace(/\s+/g, '-')
       .replace(/[\\/:*?"<>|]/g, '')
       .slice(0, 80) || 'sem-titulo'
-  return `${base}.${tipo === 'html' ? 'html' : 'md'}`
+  const ext = tipo === 'html' ? 'html' : tipo === 'text' ? 'txt' : 'md'
+  return `${base}.${ext}`
 }

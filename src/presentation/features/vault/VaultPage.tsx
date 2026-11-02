@@ -324,7 +324,7 @@ export function VaultPage() {
               <Link to={`/item/${item.id}`} className="p-1.5 text-slate-400 hover:text-brand-600" aria-label="Visualizar">
                 <Eye className="h-4 w-4" aria-hidden />
               </Link>
-              {item.mime === 'text/markdown' || item.mime === 'text/html' ? (
+              {(item.mime.startsWith('text/') || item.mime === 'application/json' || item.mime === 'application/xml') ? (
                 <Link to={`/editor/${item.id}`} className="p-1.5 text-slate-400 hover:text-brand-600" aria-label="Editar">
                   <Pencil className="h-4 w-4" aria-hidden />
                 </Link>
