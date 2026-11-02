@@ -40,7 +40,7 @@ export function ViewerPage() {
   const tipo = item.mime.startsWith('image/') ? 'imagem' : item.mime === 'text/markdown' ? 'markdown' : item.mime === 'text/html' ? 'html' : 'texto'
   const editavel = item.mime.startsWith('text/') || item.mime === 'application/json' || item.mime === 'application/xml'
 
-  function baixar() {
+  const baixar = () => {
     if (!bytes) return
     const blob = new Blob([new Uint8Array(bytes)], { type: item.mime })
     const u = URL.createObjectURL(blob)
@@ -51,11 +51,11 @@ export function ViewerPage() {
     URL.revokeObjectURL(u)
   }
 
-  function compartilhar() {
+  const compartilhar = () => {
     void vault.compartilhar(item)
   }
 
-  async function excluir() {
+  const excluir = async () => {
     if (!window.confirm('Excluir este arquivo?')) return
     await vault.excluirItem(item.id)
     navigate('/')
