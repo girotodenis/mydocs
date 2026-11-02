@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Download, Pencil, Share2, Trash2 } from 'lucide-react'
 import { useVault } from '@/presentation/app/providers/vaultProvider'
 
 export function ViewerPage() {
   const { itemId } = useParams<{ itemId: string }>()
+  const navigate = useNavigate()
   const vault = useVault()
   const item = useMemo(() => vault.manifesto?.itens.find((i) => i.id === itemId), [vault.manifesto, itemId])
   const [bytes, setBytes] = useState<Uint8Array | null>(null)
@@ -37,15 +38,53 @@ export function ViewerPage() {
 
   const texto = bytes ? new TextDecoder().decode(bytes) : ''
   const tipo = item.mime.startsWith('image/') ? 'imagem' : item.mime === 'text/markdown' ? 'markdown' : item.mime === 'text/html' ? 'html' : 'texto'
+  const editavel = item.mime.startsWith('text/') || item.mime === 'application/json' || item.mime === 'application/xml'
+
+  function baixar() {
+    if (!bytes) return
+    const blob = new Blob([new Uint8Array(bytes)], { type: item.mime })
+    const u = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = u
+    a.download = item.nome
+    a.click()
+    URL.revokeObjectURL(u)
+  }
+
+  function compartilhar() {
+    void vault.compartilhar(item)
+  }
+
+  async function excluir() {
+    if (!window.confirm('Excluir este arquivo?')) return
+    await vault.excluirItem(item.id)
+    navigate('/')
+  }
 
   return (
     <div>
-      <div className="mb-4 flex items-center gap-3">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <Link to="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-brand-600 dark:text-slate-300">
           <ArrowLeft className="h-4 w-4" aria-hidden />
           Voltar
         </Link>
         <span className="truncate text-lg font-bold text-slate-900 dark:text-slate-100">{item.nome}</span>
+        <div className="ml-auto flex items-center gap-1">
+          {editavel ? (
+            <Link to={`/editor/${item.id}`} className="p-1.5 text-slate-400 hover:text-brand-600" aria-label="Editar">
+              <Pencil className="h-4 w-4" aria-hidden />
+            </Link>
+          ) : null}
+          <button type="button" onClick={baixar} className="p-1.5 text-slate-400 hover:text-brand-600" aria-label="Baixar">
+            <Download className="h-4 w-4" aria-hidden />
+          </button>
+          <button type="button" onClick={compartilhar} className="p-1.5 text-slate-400 hover:text-brand-600" aria-label="Compartilhar">
+            <Share2 className="h-4 w-4" aria-hidden />
+          </button>
+          <button type="button" onClick={() => void excluir()} className="p-1.5 text-slate-400 hover:text-red-600" aria-label="Excluir">
+            <Trash2 className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
       </div>
 
       {bytes === null ? (
