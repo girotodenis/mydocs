@@ -13,7 +13,8 @@ import * as aplicacaoShare from '@/application/share'
 import * as aplicacaoSync from '@/application/sync'
 import * as aplicacaoVault from '@/application/vault'
 import { guardarSessao, obterSessao, removerSessao } from '@/infrastructure/cripto/chaveSessao'
-import { listarArquivos } from '@/infrastructure/drive/api'
+import { removerVerificador } from '@/infrastructure/cripto/verificadorLocal'
+import { excluirArquivo, listarArquivos } from '@/infrastructure/drive/api'
 import { garantirPastaApp } from '@/infrastructure/drive/pasta'
 import { criarSharePort } from '@/infrastructure/share/navegadorShare'
 import { criarShareTargetPort } from '@/infrastructure/share/inboxShareTarget'
@@ -46,9 +47,11 @@ interface VaultContextValue {
   configurado: boolean
   erro: string | null
   pendentes: number
+  cofreExiste: boolean
   login(): Promise<void>
   logout(): void
   entrarNoCofre(senha: string): Promise<void>
+  apagarCofre(): Promise<void>
   desbloquear(senha: string): Promise<boolean>
   bloquear(): void
   criarPasta(nome: string, parentId: PastaId | null): Promise<void>
@@ -82,6 +85,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [manifesto, setManifesto] = useState<Manifesto | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [pendentes, setPendentes] = useState(0)
+  const [cofreExiste, setCofreExiste] = useState(false)
 
   const vaultIdRef = useRef('')
   const folderIdRef = useRef('')
@@ -152,6 +156,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         const folderId = await garantirPastaApp(token, FOLDER_NAME)
         const arquivos = await listarArquivos(token, folderId)
         const manifest = arquivos.find((a) => a.name === 'mydocs.manifest')
+        setCofreExiste(Boolean(manifest))
 
         if (!manifest) {
           // Cria um cofre novo nesta conta.
@@ -187,6 +192,30 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     [auth, ctx],
   )
 
+  const apagarCofre = useCallback(async () => {
+    setErro(null)
+    try {
+      const token = await auth.tokenProvider()
+      const folderId = await garantirPastaApp(token, FOLDER_NAME)
+      const arquivos = await listarArquivos(token, folderId)
+      for (const arquivo of arquivos) {
+        await excluirArquivo(token, arquivo.id)
+      }
+      removerSessao(vaultIdRef.current)
+      removerVerificador(vaultIdRef.current)
+      localStorage.removeItem(WORKSPACE_KEY)
+      vaultIdRef.current = ''
+      folderIdRef.current = ''
+      etagRef.current = undefined
+      manifestoRef.current = null
+      setManifesto(null)
+      setCofreExiste(false)
+      setStatus('sem-cofre')
+    } catch (e) {
+      setErro(mensagem(e))
+    }
+  }, [auth])
+
   const desbloquear = useCallback(
     async (senha: string) => {
       setErro(null)
@@ -219,6 +248,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     auth.logout()
     removerSessao(vaultIdRef.current)
+    setCofreExiste(false)
     vaultIdRef.current = ''
     folderIdRef.current = ''
     etagRef.current = undefined
@@ -239,6 +269,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         const { vaultId, folderId } = JSON.parse(ws) as { vaultId: string; folderId: string }
         vaultIdRef.current = vaultId
         folderIdRef.current = folderId
+        setCofreExiste(true)
         setStatus('bloqueado')
       } catch {
         /* workspace inválido */
@@ -310,9 +341,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       configurado: auth.configurado,
       erro,
       pendentes,
+      cofreExiste,
       login: auth.login,
       logout,
       entrarNoCofre,
+      apagarCofre,
       desbloquear,
       bloquear,
       criarPasta,
@@ -338,8 +371,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       auth.login,
       erro,
       pendentes,
+      cofreExiste,
       logout,
       entrarNoCofre,
+      apagarCofre,
       desbloquear,
       bloquear,
       criarPasta,
