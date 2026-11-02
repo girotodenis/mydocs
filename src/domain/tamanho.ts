@@ -1,4 +1,4 @@
-export const LIMITE_PADRAO_BYTES = 5 * 1024 * 1024
+export const LIMITE_PADRAO_BYTES = 10 * 1024 * 1024
 
 export function dentroDoLimite(bytes: number, limite = LIMITE_PADRAO_BYTES): boolean {
   return bytes > 0 && bytes <= limite

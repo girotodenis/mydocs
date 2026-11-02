@@ -7,9 +7,9 @@ describe('validarUpload', () => {
   })
 
   it('recusa arquivo acima do limite', () => {
-    const r = validarUpload('foto.png', 5 * 1024 * 1024 + 1, 'image/png')
+    const r = validarUpload('foto.png', 10 * 1024 * 1024 + 1, 'image/png')
     expect(r.ok).toBe(false)
-    expect(r.motivo).toContain('5 MB')
+    expect(r.motivo).toContain('10 MB')
   })
 
   it('recusa mime não suportado', () => {

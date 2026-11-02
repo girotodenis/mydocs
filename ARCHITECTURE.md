@@ -15,7 +15,7 @@ requisitos do MVP (`ESCOPO_MVP.md`, RF01–RF20, RNF01–RNF11).
 ## 1. Modelo de armazenamento (decisão central)
 
 O cofre **não** é um único arquivo JSON (como na carteira). Para suportar
-arquivos de até 5 MB e "abrir/compartilhar um item sem reescrever o cofre
+arquivos de até 10 MB e "abrir/compartilhar um item sem reescrever o cofre
 inteiro", o MyDocs usa um modelo híbrido:
 
 ```mermaid
@@ -38,7 +38,7 @@ flowchart TB
 
 Consequências práticas:
 
-- O limite de **5 MB** aplica-se ao arquivo original (antes de compactar/cifrar).
+- O limite de **10 MB** aplica-se ao arquivo original (antes de compactar/cifrar).
 - O manifesto é o ponto de concorrência: escrita com **etag + `If-Match`** e
   reaplicação em conflito (HTTP 412), como no app de carteira.
 - A decifra é **sob demanda**: listar o cofre só precisa do manifesto; o
@@ -85,7 +85,7 @@ flowchart LR
 | --- | --- |
 | **Modelos de negócio** | `domain/entities.ts` — `Vault` (cofre), `Item` (arquivo), `Nota`, `PastaVirtual`, `Manifesto` |
 | **Tipos e validações** | `domain/itemId.ts` (UUID), `domain/mime.ts` (tipos suportados), `domain/tamanho.ts` (bytes), `domain/nome.ts` (regras de nome válido) |
-| **Regras de negócio (funções puras)** | `domain/arvore.ts` (árvore de pastas: criar/mover/renomear/resolver caminho), `domain/validacaoUpload.ts` (limite de 5 MB, mime permitido), `domain/editor.ts` (serializar `.md`/`.html`), `domain/preview.ts` (classificar item em imagem/texto/markdown/outro) |
+| **Regras de negócio (funções puras)** | `domain/arvore.ts` (árvore de pastas: criar/mover/renomear/resolver caminho), `domain/validacaoUpload.ts` (limite de 10 MB, mime permitido), `domain/editor.ts` (serializar `.md`/`.html`), `domain/preview.ts` (classificar item em imagem/texto/markdown/outro) |
 | **Formato do envelope** | `domain/envelope.ts` — magic, cabeçalho em claro, Base64 e validação de senha (sem Web Crypto) |
 | **Ports (contratos)** | `domain/ports.ts` — `VaultRepository`, `ItemStore`, `CryptoProvider`, `SharePort`, `ShareTargetPort`, `Clock` |
 | **Vocabulário** | `Cofre (Vault)`, `Item`, `PastaVirtual`, `Manifesto`, `Blob cifrado`, `Envelope`, `Outbox`, `Desbloquear/Bloquear` |
@@ -128,7 +128,7 @@ flowchart LR
 
 - `application/vault.ts` — abrir/criar cofre, carregar manifesto (cache-first).
 - `application/pastas.ts` — criar/renomear/excluir pastas virtuais.
-- `application/itens.ts` — upload (valida 5 MB → compacta → cifra → sobe blob →
+- `application/itens.ts` — upload (valida 10 MB → compacta → cifra → sobe blob →
   atualiza manifesto), mover, renomear, excluir.
 - `application/preview.ts` — abrir um item (decifrar sob demanda) e classificá-lo
   para visualização (imagem/texto/markdown/outro).
@@ -137,7 +137,7 @@ flowchart LR
 - `application/share.ts` — decifrar o item, montar `File`/`Blob` e acionar o
   `SharePort`; fallback para download quando não houver Web Share.
 - `application/recebidos.ts` — processar itens recebidos pelo share target:
-  validar (5 MB), sugerir a pasta de destino e disparar o mesmo pipeline de
+  validar (10 MB), sugerir a pasta de destino e disparar o mesmo pipeline de
   upload (gzip → cifra → blob → manifesto).
 - `application/criptografia.ts` — desbloquear/bloquear, ativar/estado do cofre e
   mensagens exibidas pela UI; concentra pré-condições (Web Crypto disponível,
@@ -259,7 +259,7 @@ A integração com o sistema tem **duas direções**, ambas no MVP:
   (`event.request.formData()`), lê os itens recebidos e os guarda numa área de
   **"Recebidos"** (`inbox` no IndexedDB) para confirmação do usuário.
 - Ao abrir o app, o usuário confirma o destino (pasta) e os itens seguem o
-  **mesmo pipeline de upload**: validação de 5 MB → gzip → cifra → blob no
+  **mesmo pipeline de upload**: validação de 10 MB → gzip → cifra → blob no
   Drive → manifesto (`application/recebidos.ts`).
 - **Requisitos/limitações**: exige o app **instalado** (PWA na tela inicial) e
   suporte do navegador — **Chrome/Android** é o alvo principal; **Safari/iOS**
@@ -268,11 +268,11 @@ A integração com o sistema tem **duas direções**, ambas no MVP:
 
 ---
 
-## 11. Limite de 5 MB por arquivo
+## 11. Limite de 10 MB por arquivo
 
 - Validado em `domain/validacaoUpload.ts` sobre o tamanho **original**, antes de
   compactar/cifrar.
-- O upload é recusado com mensagem clara se exceder 5 MB (RF04).
+- O upload é recusado com mensagem clara se exceder 10 MB (RF04).
 - Arquivos que crescem pouco com gzip (jpg, zip) são aceitos normalmente — a
   compressão é mantida por uniformidade do envelope.
 

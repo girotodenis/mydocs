@@ -31,7 +31,7 @@ O app não tem servidor próprio: é uma "janela" sobre o Drive do usuário, com
 Entregar um cofre funcional de ponta a ponta que resolva o fluxo principal:
 
 1. Autenticar com o Google e criar/abrir o cofre na pasta exclusiva do app.
-2. Enviar arquivos (máx. **5 MB**) que são **sempre** compactados e cifrados antes do upload.
+2. Enviar arquivos (máx. **10 MB**) que são **sempre** compactados e cifrados antes do upload.
 3. Organizar em subpastas virtuais: criar, renomear, mover e excluir.
 4. Visualizar **imagens**, **texto** e **markdown** dentro do app.
 5. Criar/editar notas com **editor de Markdown/HTML**.
@@ -73,10 +73,10 @@ abri-los de qualquer lugar sem que o Google "leia" o conteúdo.
 
 | Decisão | Escolha para o MVP | Alternativa adiada |
 | --- | --- | --- |
-| Como os arquivos ficam no Drive | **Um arquivo por item** (blob cifrado, nome opaco UUID) + **1 manifesto cifrado** com a árvore de pastas e metadados | Um único arquivo JSON gigante (como no app de carteira) — descartado por causa do limite de 5 MB por arquivo e do custo de reescrever tudo |
+| Como os arquivos ficam no Drive | **Um arquivo por item** (blob cifrado, nome opaco UUID) + **1 manifesto cifrado** com a árvore de pastas e metadados | Um único arquivo JSON gigante (como no app de carteira) — descartado por causa do limite de 10 MB por arquivo e do custo de reescrever tudo |
 | Subpastas | **Virtuais** (definidas no manifesto) — nomes privados, mover/renomear é só editar o manifesto | Pastas nativas do Drive — vazaria nomes/estrutura |
 | Criptografia | **Obrigatória**, por arquivo, `gzip` antes de `AES-256-GCM` | Cifra opcional |
-| Limite de tamanho | **5 MB por arquivo**, validado no cliente antes de compactar | Upload chunked/retomável (fase 2) |
+| Limite de tamanho | **10 MB por arquivo**, validado no cliente antes de compactar | Upload chunked/retomável (fase 2) |
 | Cache local | IndexedDB guardando **apenas envelopes cifrados** + verificador de desbloqueio offline | Cache em claro |
 | Compartilhamento | **Saída** (Web Share API): decifrar → `Blob` → `navigator.share` **e Entrada** (Web Share Target API): receber arquivos/texto de outros apps no cofre | (nenhuma — as duas direções entram no MVP) |
 | Editor | **CodeMirror 6** (`@uiw/react-codemirror`) para Markdown/HTML; preview com `react-markdown` + `remark-gfm` (`.md`) e `iframe` sandbox/`srcDoc` (`.html`); notas como `.md`/`.html` | WYSIWYG (TipTap/ProseMirror) / collaborative |
@@ -92,7 +92,7 @@ abri-los de qualquer lugar sem que o Google "leia" o conteúdo.
 | **RF01** | O app deve autenticar com o Google via OAuth 2.0 usando apenas o escopo **`drive.file`** (não sensível), sem backend próprio. |
 | **RF02** | O app deve criar (ou localizar) uma **pasta exclusiva** do projeto no Drive (ex.: `mydocs_vault`) para guardar o cofre. |
 | **RF03** | Todo arquivo enviado deve ser **compactado (gzip) e criptografado (AES-256-GCM) antes do upload** — criptografia é obrigatória e não pode ser desativada. |
-| **RF04** | O app deve **recusar arquivos maiores que 5 MB**, com validação no cliente antes de qualquer processamento. |
+| **RF04** | O app deve **recusar arquivos maiores que 10 MB**, com validação no cliente antes de qualquer processamento. |
 | **RF05** | O usuário deve poder **criar subpastas** dentro do cofre (pastas virtuais). |
 | **RF06** | O usuário deve poder **mover** arquivos entre subpastas e **renomear** arquivos/pastas. |
 | **RF07** | O usuário deve poder **excluir** arquivos e subpastas (com confirmação explícita). |
@@ -120,7 +120,7 @@ abri-los de qualquer lugar sem que o Google "leia" o conteúdo.
 | **RNF02** | Criptografia forte: **AES-256-GCM** com chave derivada por **PBKDF2-HMAC-SHA256 (600.000 iterações)**, IV novo por escrita, AAD no cabeçalho. |
 | **RNF03** | **Cache local criptografado**: o IndexedDB nunca persiste conteúdo em claro; guarda envelopes cifrados e o verificador de desbloqueio offline. |
 | **RNF04** | **Privacidade de metadados**: nomes de arquivos/pastas e a estrutura vivem apenas dentro do manifesto cifrado — o Drive só vê UUIDs opacos. |
-| **RNF05** | **Limite de 5 MB por arquivo** (validado antes de compactar/cifrar). |
+| **RNF05** | **Limite de 10 MB por arquivo** (validado antes de compactar/cifrar). |
 | **RNF06** | **Offline-first**: leitura cache-first; escritas offline vão para outbox e sincronizam ao reconectar. |
 | **RNF07** | **Mobile-first**: a interface deve ser usável por toque em telas pequenas. |
 | **RNF08** | **Sem recuperação de senha**: senha esquecida = dados perdidos (avisar explicitamente). |
@@ -134,7 +134,7 @@ abri-los de qualquer lugar sem que o Google "leia" o conteúdo.
 
 - [ ] Login com Google cria/abre o cofre na pasta exclusiva, sem pedir escopos sensíveis.
 - [ ] Um arquivo enviado aparece na nuvem como blob opaco (UUID) e **não** é legível sem a senha.
-- [ ] Arquivo > 5 MB é recusado antes de enviar.
+- [ ] Arquivo > 10 MB é recusado antes de enviar.
 - [ ] Criar subpasta, mover e renomear funcionam e persistem após recarregar.
 - [ ] Imagens, `.txt` e `.md` abrem e exibem corretamente (decifrados).
 - [ ] Nota criada no editor Markdown/HTML é salva no cofre e reabre editável.
@@ -150,7 +150,7 @@ abri-los de qualquer lugar sem que o Google "leia" o conteúdo.
 | Risco | Mitigação |
 | --- | --- |
 | Perda de senha = perda total dos dados | Aviso explícito ("Entendi que não há recuperação") + verificador de desbloqueio offline; nunca gravar a chave. |
-| Estouro do espaço/limites do Drive | Limite de 5 MB/arquivo; mostrar o tamanho total e o uso; tratamento de quota (HTTP 403/quota) no outbox. |
+| Estouro do espaço/limites do Drive | Limite de 10 MB/arquivo; mostrar o tamanho total e o uso; tratamento de quota (HTTP 403/quota) no outbox. |
 | Conflito de escrita concorrente no manifesto | `etag` + `If-Match` (read-modify-write); em HTTP 412, reler e reaplicar — mesmo padrão do app de carteira. |
 | Compartilhar exige decifrar e criar `Blob` grande | Decifra sob demanda, apenas do item compartilhado; revogar object URLs após o uso. |
 | Navegadores que não suportam Web Share | Fallback para download do arquivo decifrado. |

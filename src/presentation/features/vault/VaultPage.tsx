@@ -20,6 +20,7 @@ import {
 import type { Item, PastaId } from '@/domain/entities'
 import { itensDaPasta, resolverCaminho, subpastasDe } from '@/domain/arvore'
 import { formatarBytes } from '@/domain/tamanho'
+import { MAX_FILE_BYTES } from '@/infrastructure/config'
 import { useVault } from '@/presentation/app/providers/vaultProvider'
 
 export function VaultPage() {
@@ -80,10 +81,10 @@ export function VaultPage() {
 
   async function enviarArquivos(files: FileList | null) {
     if (!files || files.length === 0) return
-    const LIMITE = 5 * 1024 * 1024
+    const limiteMB = Math.round(MAX_FILE_BYTES / (1024 * 1024))
     for (const file of Array.from(files)) {
-      if (file.size > LIMITE) {
-        window.alert(`"${file.name}" excede o limite de 5 MB`)
+      if (file.size > MAX_FILE_BYTES) {
+        window.alert(`"${file.name}" excede o limite de ${limiteMB} MB`)
         continue
       }
       const bytes = new Uint8Array(await file.arrayBuffer())

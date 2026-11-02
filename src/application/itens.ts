@@ -3,6 +3,7 @@ import { adicionarItem, excluirItem, moverItem, renomearItem } from '@/domain/ar
 import { gerarId } from '@/domain/itemId'
 import { nomeValido, normalizarNome } from '@/domain/nome'
 import { validarUpload } from '@/domain/validacaoUpload'
+import { MAX_FILE_BYTES } from '@/infrastructure/config'
 import { comprimirGzip } from '@/infrastructure/compression'
 import { cifrarComChave } from '@/infrastructure/cripto/envelope'
 import { ChaveNecessariaError } from '@/infrastructure/cripto/erros'
@@ -25,7 +26,7 @@ export interface ArquivoEntrada {
 }
 
 export async function enviarArquivo(ctx: ContextoVault, arquivo: ArquivoEntrada): Promise<Item> {
-  const v = validarUpload(arquivo.nome, arquivo.bytes.byteLength, arquivo.mime)
+  const v = validarUpload(arquivo.nome, arquivo.bytes.byteLength, arquivo.mime, MAX_FILE_BYTES)
   if (!v.ok) throw new Error(v.motivo)
 
   const chave = ctx.obterChave()

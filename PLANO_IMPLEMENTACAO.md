@@ -36,7 +36,7 @@ Plano incremental do MVP. Cada fase termina com **build/testes verdes** e um
 - [x] Modelos: `Vault`, `Item`, `PastaVirtual`, `Manifesto`, `Nota`
 - [x] Tipos/validações: `itemId`, `mime`, `tamanho`, `nome`
 - [x] `arvore.ts` (criar/mover/renomear/resolver caminho)
-- [x] `validacaoUpload.ts` (limite de 5 MB, mime permitido)
+- [x] `validacaoUpload.ts` (limite de 10 MB, mime permitido)
 - [x] `preview.ts` (classificar imagem/texto/markdown/html/outro)
 - [x] `editor.ts` (serializar `.md`/`.html`)
 - [x] `envelope.ts` (magic/cabeçalho — puro, sem Web Crypto)
