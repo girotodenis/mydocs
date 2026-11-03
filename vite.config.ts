@@ -33,6 +33,7 @@ const manifest = {
             'application/json',
             'application/xml',
             'application/pdf',
+            'application/octet-stream',
           ],
         },
       ],

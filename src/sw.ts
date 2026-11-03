@@ -48,6 +48,21 @@ function sanitizarNome(nome: string): string {
     .slice(0, 80)
 }
 
+/**
+ * Coleta os arquivos compartilhados. O campo padrão é `file`, mas alguns
+ * navegadores/apps enviam o arquivo sob outro nome — por isso cai no
+ * fallback que varre todos os valores do formulário.
+ */
+function extrairArquivos(formData: FormData): File[] {
+  const diretos = formData.getAll('file').filter((v): v is File => typeof v !== 'string')
+  if (diretos.length > 0) return diretos
+  const todos: File[] = []
+  formData.forEach((value) => {
+    if (typeof value !== 'string') todos.push(value)
+  })
+  return todos
+}
+
 async function processarShare(request: Request): Promise<Response> {
   try {
     const formData = await request.formData()
@@ -55,7 +70,7 @@ async function processarShare(request: Request): Promise<Response> {
     const tx = db.transaction(INBOX_STORE, 'readwrite')
     const store = tx.objectStore(INBOX_STORE)
 
-    const files = formData.getAll('file') as File[]
+    const files = extrairArquivos(formData)
     for (const file of files) {
       const buffer = await file.arrayBuffer()
       store.put(
