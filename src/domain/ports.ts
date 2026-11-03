@@ -30,7 +30,7 @@ export interface SharePort {
 }
 
 export interface ShareTargetPort {
-  lerRecebidos(): Promise<{ title?: string; text?: string; url?: string; files: ArquivoRecebido[] }>
+  lerRecebidos(): Promise<{ title?: string; text?: string; url?: string; files: ArquivoRecebido[]; debug?: string[] }>
 }
 
 export interface Clock {

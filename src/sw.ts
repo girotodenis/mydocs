@@ -63,14 +63,45 @@ function extrairArquivos(formData: FormData): File[] {
   return todos
 }
 
+/**
+ * Grava um resumo do que o service worker recebeu, para a tela de Recebidos
+ * exibir no log de depuração. Usa transação própria para sobreviver mesmo que
+ * a gravação dos arquivos falhe depois.
+ */
+async function gravarDiagnostico(resumo: string[]): Promise<void> {
+  try {
+    const db = await abrirDb()
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(INBOX_STORE, 'readwrite')
+      tx.objectStore(INBOX_STORE).put(JSON.stringify({ tipo: 'debug', resumo }), `debug-${crypto.randomUUID()}`)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+  } catch {
+    /* diagnóstico não deve impedir o fluxo */
+  }
+}
+
 async function processarShare(request: Request): Promise<Response> {
   try {
     const formData = await request.formData()
+
+    const files = extrairArquivos(formData)
+    const resumo: string[] = []
+    formData.forEach((value, key) => {
+      if (typeof value === 'string') {
+        resumo.push(`${key}=texto(${value.slice(0, 80)})`)
+      } else {
+        resumo.push(`${key}=arquivo(${value.name}, ${value.size} bytes, ${value.type || 'sem-mime'})`)
+      }
+    })
+    resumo.push(`arquivosDetectados=${files.length}`)
+    await gravarDiagnostico(resumo)
+
     const db = await abrirDb()
     const tx = db.transaction(INBOX_STORE, 'readwrite')
     const store = tx.objectStore(INBOX_STORE)
 
-    const files = extrairArquivos(formData)
     for (const file of files) {
       const buffer = await file.arrayBuffer()
       store.put(

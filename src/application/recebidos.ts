@@ -22,6 +22,10 @@ export async function processarRecebidos(
   if (!ctx.obterSessao()?.chave) throw new ChaveNecessariaError()
   onLog?.('Lendo caixa de entrada…')
   const recebidos = await ctx.shareTargetPort.lerRecebidos()
+  if (recebidos.debug && recebidos.debug.length > 0) {
+    onLog?.('O que o service worker recebeu:')
+    for (const linha of recebidos.debug) onLog?.(`  [SW] ${linha}`)
+  }
   onLog?.(`${recebidos.files.length} arquivo(s) encontrado(s)`)
   let contagem = 0
   for (const arquivo of recebidos.files) {
