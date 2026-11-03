@@ -68,7 +68,7 @@ interface VaultContextValue {
   abrirItem(item: Item): Promise<{ tipo: TipoPreview; bytes: Uint8Array }>
   compartilhar(item: Item): Promise<void>
   salvarNota(titulo: string, conteudo: string, tipo: TipoNota, pastaId: PastaId | null): Promise<void>
-  processarRecebidos(pastaId: PastaId | null): Promise<number>
+  processarRecebidos(pastaId: PastaId | null, onLog?: (msg: string) => void): Promise<number>
   sincronizar(): Promise<number>
 }
 
@@ -415,9 +415,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     [ctx, comAuth],
   )
   const processarRecebidos = useCallback(
-    (pastaId: PastaId | null) => {
+    (pastaId: PastaId | null, onLog?: (msg: string) => void) => {
       if (!importacaoRecebidosRef.current) {
-        importacaoRecebidosRef.current = comAuth(() => aplicacaoRecebidos.processarRecebidos(ctx, pastaId)).finally(() => {
+        importacaoRecebidosRef.current = comAuth(() =>
+          aplicacaoRecebidos.processarRecebidos(ctx, pastaId, onLog),
+        ).finally(() => {
           importacaoRecebidosRef.current = null
         })
       }

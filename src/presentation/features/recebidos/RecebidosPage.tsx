@@ -1,43 +1,55 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Inbox, Loader2, LockKeyhole, LogIn } from 'lucide-react'
 import { useVault } from '@/presentation/app/providers/vaultProvider'
-import { useLoading } from '@/presentation/app/providers/loadingProvider'
 
 export function RecebidosPage() {
   const vault = useVault()
-  const loading = useLoading()
   const { status, processarRecebidos } = vault
   const [mensagem, setMensagem] = useState('')
   const [carregando, setCarregando] = useState(false)
   const [senha, setSenha] = useState('')
   const [desbloqueando, setDesbloqueando] = useState(false)
+  const [log, setLog] = useState<string[]>([])
   const importouRef = useRef(false)
+
+  const registrar = useCallback((msg: string) => {
+    setLog((prev) => [...prev, `${new Date().toLocaleTimeString()} ${msg}`])
+  }, [])
 
   const processar = useCallback(async () => {
     if (status !== 'pronto') return
     setCarregando(true)
+    setLog([])
     try {
-      const n = await loading.comCarregando('Importando recebidos…', () => processarRecebidos(null))
+      registrar('Iniciando importação…')
+      const n = await processarRecebidos(null, registrar)
+      registrar(`Concluído: ${n} arquivo(s) importado(s).`)
       setMensagem(n > 0 ? `${n} arquivo(s) importado(s) para a raiz.` : 'Nenhum arquivo recebido pendente.')
     } catch (e) {
+      registrar(`Erro: ${e instanceof Error ? e.message : String(e)}`)
       setMensagem(e instanceof Error ? e.message : String(e))
     } finally {
       setCarregando(false)
     }
-  }, [status, processarRecebidos, loading])
+  }, [status, processarRecebidos, registrar])
 
   async function desbloquear(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setDesbloqueando(true)
     setMensagem('')
+    setLog([])
+    registrar('Desbloqueando cofre…')
     try {
       if (vault.status === 'bloqueado') {
         await vault.desbloquear(senha)
       } else {
         await vault.entrarNoCofre(senha)
       }
+      registrar('Cofre desbloqueado.')
     } catch (erro) {
-      setMensagem(erro instanceof Error ? erro.message : String(erro))
+      const msg = erro instanceof Error ? erro.message : String(erro)
+      registrar(`Erro ao desbloquear: ${msg}`)
+      setMensagem(msg)
     } finally {
       setSenha('')
       setDesbloqueando(false)
@@ -47,10 +59,15 @@ export function RecebidosPage() {
   async function entrar() {
     setDesbloqueando(true)
     setMensagem('')
+    setLog([])
+    registrar('Conectando ao Google…')
     try {
       await vault.login()
+      registrar('Login concluído.')
     } catch (erro) {
-      setMensagem(erro instanceof Error ? erro.message : String(erro))
+      const msg = erro instanceof Error ? erro.message : String(erro)
+      registrar(`Erro ao entrar: ${msg}`)
+      setMensagem(msg)
     } finally {
       setDesbloqueando(false)
     }
@@ -124,6 +141,22 @@ export function RecebidosPage() {
       </button>}
       {vault.erro ? <p role="alert" className="mt-4 text-sm text-red-700 dark:text-red-300">{vault.erro}</p> : null}
       {mensagem ? <p role="status" className="mt-4 text-sm text-slate-600 dark:text-slate-300">{mensagem}</p> : null}
+      {vault.autenticado ? (
+        <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-3 text-left dark:border-slate-800 dark:bg-slate-900">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+            Log de depuração
+          </p>
+          {log.length === 0 ? (
+            <p className="text-xs text-slate-400">Nenhuma atividade ainda.</p>
+          ) : (
+            <ul className="max-h-64 space-y-1 overflow-auto font-mono text-xs text-slate-700 dark:text-slate-300">
+              {log.map((linha, i) => (
+                <li key={i} className="break-words">{linha}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
     </div>
   )
 }

@@ -10,18 +10,35 @@ function mimeResolvido(mime: string, nome: string): string {
   return mimeDeNome(nome)
 }
 
-export async function processarRecebidos(ctx: ContextoVault, pastaId: PastaId | null): Promise<number> {
+function mensagem(e: unknown): string {
+  return e instanceof Error ? e.message : String(e)
+}
+
+export async function processarRecebidos(
+  ctx: ContextoVault,
+  pastaId: PastaId | null,
+  onLog?: (msg: string) => void,
+): Promise<number> {
   if (!ctx.obterSessao()?.chave) throw new ChaveNecessariaError()
+  onLog?.('Lendo caixa de entrada…')
   const recebidos = await ctx.shareTargetPort.lerRecebidos()
+  onLog?.(`${recebidos.files.length} arquivo(s) encontrado(s)`)
   let contagem = 0
   for (const arquivo of recebidos.files) {
-    await enviarArquivo(ctx, {
-      nome: arquivo.nome,
-      mime: mimeResolvido(arquivo.mime, arquivo.nome),
-      bytes: arquivo.bytes,
-      pastaId,
-    })
-    contagem += 1
+    const mime = mimeResolvido(arquivo.mime, arquivo.nome)
+    onLog?.(`→ Importando "${arquivo.nome}" (${mime}, ${arquivo.bytes.byteLength} bytes)…`)
+    try {
+      await enviarArquivo(ctx, {
+        nome: arquivo.nome,
+        mime,
+        bytes: arquivo.bytes,
+        pastaId,
+      })
+      contagem += 1
+      onLog?.(`  ✓ "${arquivo.nome}" importado`)
+    } catch (e) {
+      onLog?.(`  ✗ "${arquivo.nome}": ${mensagem(e)}`)
+    }
   }
   return contagem
 }
