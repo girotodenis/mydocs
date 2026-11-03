@@ -6,7 +6,12 @@ function asBufferSource(bytes: Uint8Array): ArrayBuffer {
   return copy.buffer
 }
 
-export async function derivarChave(senha: string, salt: Uint8Array, iterations: number): Promise<CryptoKey> {
+export async function derivarChave(
+  senha: string,
+  salt: Uint8Array,
+  iterations: number,
+  extractable = false,
+): Promise<CryptoKey> {
   const material = await crypto.subtle.importKey(
     'raw',
     asBufferSource(encoder.encode(senha)),
@@ -18,7 +23,7 @@ export async function derivarChave(senha: string, salt: Uint8Array, iterations: 
     { name: 'PBKDF2', salt: asBufferSource(salt), iterations, hash: 'SHA-256' },
     material,
     { name: 'AES-GCM', length: 256 },
-    false,
+    extractable,
     ['encrypt', 'decrypt'],
   )
 }
@@ -71,4 +76,15 @@ export function base64ParaBytes(b64: string): Uint8Array {
   const out = new Uint8Array(bin.length)
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
   return out
+}
+
+export async function exportarChaveRaw(chave: CryptoKey): Promise<Uint8Array> {
+  return new Uint8Array(await crypto.subtle.exportKey('raw', chave))
+}
+
+export async function importarChaveRaw(bytes: Uint8Array): Promise<CryptoKey> {
+  return crypto.subtle.importKey('raw', asBufferSource(bytes), { name: 'AES-GCM' }, false, [
+    'encrypt',
+    'decrypt',
+  ])
 }

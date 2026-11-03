@@ -6,6 +6,7 @@ import {
   Eye,
   FilePlus,
   FileText,
+  Fingerprint,
   Folder,
   FolderPlus,
   FolderInput,
@@ -29,6 +30,7 @@ export function VaultPage() {
   const vault = useVault()
   const loading = useLoading()
   const [senha, setSenha] = useState('')
+  const [usarBiometria, setUsarBiometria] = useState(false)
   const [pastaAtual, setPastaAtualState] = useState<PastaId | null>(null)
   const [carregando, setCarregando] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -57,7 +59,30 @@ export function VaultPage() {
   async function entrarNoCofre(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!senha || carregando) return
-    await comCarregando('Abrindo cofre…', () => vault.entrarNoCofre(senha))
+    await comCarregando('Abrindo cofre…', async () => {
+      await vault.entrarNoCofre(senha)
+      if (usarBiometria && vault.biometriaSuportada) {
+        await ativarBiometria()
+      }
+    })
+  }
+
+  async function ativarBiometria() {
+    try {
+      await vault.ativarBiometria()
+    } catch (e) {
+      const nome = e instanceof DOMException ? e.name : ''
+      if (nome !== 'NotAllowedError' && nome !== 'AbortError') {
+        window.alert('Não foi possível ativar a biometria: ' + (e instanceof Error ? e.message : String(e)))
+      }
+    }
+  }
+
+  async function entrarComBiometria() {
+    if (carregando) return
+    await comCarregando('Abrindo cofre…', async () => {
+      await vault.desbloquearComBiometria()
+    })
   }
 
   async function comCarregando(mensagem: string, fn: () => Promise<void>) {
@@ -185,6 +210,19 @@ export function VaultPage() {
         <p className="mt-1 text-center text-xs text-slate-500 dark:text-slate-400">
           Digite sua senha para entrar. Se o cofre ainda não existir, ele será criado agora.
         </p>
+
+        {vault.biometriaSuportada && vault.biometriaAtiva ? (
+          <button
+            type="button"
+            disabled={carregando}
+            onClick={() => void entrarComBiometria()}
+            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-brand-300 bg-brand-50 px-4 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-100 disabled:opacity-60 dark:border-brand-500/30 dark:bg-brand-500/10 dark:text-brand-300 dark:hover:bg-brand-500/20"
+          >
+            <Fingerprint className="h-4 w-4" aria-hidden />
+            Entrar com impressão digital
+          </button>
+        ) : null}
+
         <form onSubmit={(event) => void entrarNoCofre(event)} className="mt-4">
           <input
             type="password"
@@ -196,6 +234,17 @@ export function VaultPage() {
             aria-label="Senha do cofre"
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
           />
+          {vault.biometriaSuportada && !vault.biometriaAtiva && vault.cofreExiste ? (
+            <label className="mt-3 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <input
+                type="checkbox"
+                checked={usarBiometria}
+                onChange={(e) => setUsarBiometria(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 accent-brand-600"
+              />
+              Usar impressão digital neste dispositivo
+            </label>
+          ) : null}
           <button
             type="submit"
             disabled={carregando}

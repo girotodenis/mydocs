@@ -22,7 +22,7 @@ export interface NovoCofre {
 export async function criarNovoCofre(token: string, senha: string, folderNome: string): Promise<NovoCofre> {
   const folderId = await garantirPastaApp(token, folderNome)
   const salt = randomBytes(16)
-  const chave = await derivarChave(senha, salt, ITERACOES_KDF)
+  const chave = await derivarChave(senha, salt, ITERACOES_KDF, true)
 
   const manifesto = manifestoVazio()
   const claro = serializarManifesto(manifesto)

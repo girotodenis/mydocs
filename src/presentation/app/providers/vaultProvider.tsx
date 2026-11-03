@@ -14,6 +14,7 @@ import * as aplicacaoSync from '@/application/sync'
 import * as aplicacaoVault from '@/application/vault'
 import { guardarSessao, obterSessao, removerSessao } from '@/infrastructure/cripto/chaveSessao'
 import { obterSaltVerificador, removerVerificador } from '@/infrastructure/cripto/verificadorLocal'
+import { biometriaConfigurada, removerBiometria, suporteBiometria } from '@/infrastructure/cripto/biometria'
 import { excluirArquivo, listarArquivos, TokenExpiradoError } from '@/infrastructure/drive/api'
 import { garantirPastaApp } from '@/infrastructure/drive/pasta'
 import { criarSharePort } from '@/infrastructure/share/navegadorShare'
@@ -56,6 +57,10 @@ interface VaultContextValue {
   entrarNoCofre(senha: string): Promise<void>
   apagarCofre(): Promise<void>
   desbloquear(senha: string): Promise<boolean>
+  desbloquearComBiometria(): Promise<boolean>
+  biometriaSuportada: boolean
+  biometriaAtiva: boolean
+  ativarBiometria(): Promise<void>
   bloquear(): void
   criarPasta(nome: string, parentId: PastaId | null): Promise<void>
   renomearPasta(id: string, nome: string): Promise<void>
@@ -90,6 +95,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [pendentes, setPendentes] = useState(0)
   const [cofreExiste, setCofreExiste] = useState(false)
   const [sessaoExpirada, setSessaoExpirada] = useState(false)
+  const biometriaSuportada = useMemo(() => suporteBiometria(), [])
+  const [biometriaAtiva, setBiometriaAtiva] = useState(false)
 
   const vaultIdRef = useRef('')
   const folderIdRef = useRef('')
@@ -199,6 +206,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
           folderIdRef.current = novo.folderId
           guardarSessao(novo.vaultId, novo.sessao)
           salvarWorkspace()
+          setCofreExiste(true)
           await iniciarCache()
           await iniciarOutbox()
           await aplicacaoVault.carregarVault(ctx)
@@ -248,6 +256,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       }
       removerSessao(vaultIdRef.current)
       removerVerificador(vaultIdRef.current)
+      removerBiometria(vaultIdRef.current)
       localStorage.removeItem(WORKSPACE_KEY)
       vaultIdRef.current = ''
       folderIdRef.current = ''
@@ -305,6 +314,40 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     [ctx],
   )
 
+  const ativarBiometria = useCallback(async () => {
+    const sessao = obterSessao(vaultIdRef.current)
+    if (!sessao) throw new Error('Cofre não está desbloqueado.')
+    await aplicacaoCripto.ativarBiometria(ctx, sessao, auth.email ?? '')
+    setBiometriaAtiva(biometriaConfigurada(vaultIdRef.current))
+  }, [auth.email, ctx])
+
+  const desbloquearComBiometria = useCallback(async () => {
+    setErro(null)
+    try {
+      const ok = await aplicacaoCripto.desbloquearComBiometria(ctx)
+      if (!ok) {
+        setErro('Não foi possível desbloquear com a biometria.')
+        return false
+      }
+      await iniciarCache()
+      await iniciarOutbox()
+      if (onlineRef.current) {
+        if (contarPendencias() > 0 && lerManifestoCache(ctx.vaultId)) {
+          await aplicacaoVault.carregarVaultDoCache(ctx)
+        } else {
+          await aplicacaoVault.carregarVault(ctx)
+        }
+      } else {
+        await aplicacaoVault.carregarVaultDoCache(ctx)
+      }
+      setStatus('pronto')
+      return true
+    } catch (e) {
+      setErro(mensagem(e))
+      return false
+    }
+  }, [ctx])
+
   const bloquear = useCallback(() => {
     aplicacaoCripto.bloquear(ctx)
     manifestoRef.current = null
@@ -347,6 +390,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       }
     }
   }, [auth.token, status, logout])
+
+  // Mantém o indicador de biometria em sincronia com o que está gravado localmente.
+  useEffect(() => {
+    setBiometriaAtiva(biometriaSuportada && biometriaConfigurada(vaultIdRef.current))
+  }, [biometriaSuportada, status])
 
   /**
    * Encapsula operações que podem falhar por token expirado (HTTP 401): nesse
@@ -504,6 +552,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       entrarNoCofre,
       apagarCofre,
       desbloquear,
+      desbloquearComBiometria,
+      biometriaSuportada,
+      biometriaAtiva,
+      ativarBiometria,
       bloquear,
       criarPasta,
       renomearPasta,
@@ -535,6 +587,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       entrarNoCofre,
       apagarCofre,
       desbloquear,
+      desbloquearComBiometria,
+      biometriaSuportada,
+      biometriaAtiva,
+      ativarBiometria,
       bloquear,
       criarPasta,
       renomearPasta,
