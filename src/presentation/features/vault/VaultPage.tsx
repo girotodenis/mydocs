@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowUp,
@@ -53,6 +53,12 @@ export function VaultPage() {
   const pastas = useMemo(() => (vault.manifesto ? subpastasDe(vault.manifesto, pastaAtual) : []), [vault.manifesto, pastaAtual])
   const itens = useMemo(() => (vault.manifesto ? itensDaPasta(vault.manifesto, pastaAtual) : []), [vault.manifesto, pastaAtual])
   const caminho = useMemo(() => (vault.manifesto ? resolverCaminho(vault.manifesto, pastaAtual) : []), [vault.manifesto, pastaAtual])
+
+  async function entrarNoCofre(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!senha || carregando) return
+    await comCarregando('Abrindo cofre…', () => vault.entrarNoCofre(senha))
+  }
 
   async function comCarregando(mensagem: string, fn: () => Promise<void>) {
     setCarregando(true)
@@ -179,22 +185,26 @@ export function VaultPage() {
         <p className="mt-1 text-center text-xs text-slate-500 dark:text-slate-400">
           Digite sua senha para entrar. Se o cofre ainda não existir, ele será criado agora.
         </p>
-        <input
-          type="password"
-          value={senha}
-          onChange={(e) => setSenha(e.target.value)}
-          placeholder="Senha"
-          className="mt-4 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-        />
-        <button
-          type="button"
-          disabled={carregando}
-          onClick={() => void comCarregando('Abrindo cofre…', () => vault.entrarNoCofre(senha))}
-          className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-        >
-          {carregando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
-          {carregando ? 'Abrindo…' : 'Entrar'}
-        </button>
+        <form onSubmit={(event) => void entrarNoCofre(event)} className="mt-4">
+          <input
+            type="password"
+            value={senha}
+            onChange={(e) => setSenha(e.target.value)}
+            placeholder="Senha"
+            autoComplete="current-password"
+            enterKeyHint="go"
+            aria-label="Senha do cofre"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+          />
+          <button
+            type="submit"
+            disabled={carregando}
+            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {carregando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+            {carregando ? 'Abrindo…' : 'Entrar'}
+          </button>
+        </form>
         {vault.erro ? (
           <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{vault.erro}</p>
         ) : null}
