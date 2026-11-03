@@ -6,6 +6,7 @@ const CHAVE = 'fila'
 export type Mutacao =
   | { tipo: 'upload'; itemId: string; mime: string; envelopeB64: string }
   | { tipo: 'excluirBlob'; blobId: string }
+  | { tipo: 'salvarManifesto' }
 
 let pendentes: Mutacao[] = []
 

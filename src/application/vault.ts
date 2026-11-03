@@ -9,6 +9,7 @@ import { ITERACOES_KDF } from '@/infrastructure/cripto/constantes'
 import { criarArquivoMultipart } from '@/infrastructure/drive/api'
 import { garantirPastaApp } from '@/infrastructure/drive/pasta'
 import { lerManifestoCache } from '@/infrastructure/storage/cache'
+import { enfileirar } from '@/infrastructure/storage/outbox'
 import { manifestoVazio, parseManifesto, serializarManifesto } from '@/infrastructure/vault/manifestoCodec'
 import type { ContextoVault } from './contexto'
 
@@ -60,5 +61,10 @@ export async function persistirManifesto(ctx: ContextoVault, manifesto: Manifest
   ctx.definirManifesto(manifesto)
   if (ctx.online()) {
     await ctx.vaultRepository.salvarManifesto(manifesto)
+    return
   }
+  // Offline: persiste no cache para sobreviver a reloads e enfileira a
+  // gravação no Drive para sincronizar ao reconectar.
+  await ctx.vaultRepository.salvarManifestoLocal(manifesto)
+  await enfileirar({ tipo: 'salvarManifesto' })
 }

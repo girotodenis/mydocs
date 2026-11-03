@@ -3,6 +3,8 @@ import type { Manifesto } from './entities'
 export interface VaultRepository {
   carregarManifesto(): Promise<Manifesto>
   salvarManifesto(manifesto: Manifesto): Promise<void>
+  /** Persiste o manifesto apenas no cache local (uso offline), sem tocar no Drive. */
+  salvarManifestoLocal(manifesto: Manifesto): Promise<void>
 }
 
 export interface ItemStore {

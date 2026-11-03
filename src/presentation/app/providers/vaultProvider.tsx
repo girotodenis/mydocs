@@ -19,7 +19,7 @@ import { garantirPastaApp } from '@/infrastructure/drive/pasta'
 import { criarSharePort } from '@/infrastructure/share/navegadorShare'
 import { criarShareTargetPort } from '@/infrastructure/share/inboxShareTarget'
 import { decorarItemStore } from '@/infrastructure/storage/offlineRepositories'
-import { iniciarCache } from '@/infrastructure/storage/cache'
+import { iniciarCache, lerManifestoCache } from '@/infrastructure/storage/cache'
 import { contarPendencias, iniciarOutbox } from '@/infrastructure/storage/outbox'
 import { criarDriveItemStore } from '@/infrastructure/vault/itemStore'
 import { criarDriveVaultRepository } from '@/infrastructure/vault/vaultRepository'
@@ -218,7 +218,13 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         }
         await iniciarCache()
         await iniciarOutbox()
-        await aplicacaoVault.carregarVault(ctx)
+        // Se há alterações offline pendentes, parte do cache local (que reflete
+        // as edições feitas sem internet) para sincronizá-las com o Drive.
+        if (contarPendencias() > 0 && lerManifestoCache(vaultIdRef.current)) {
+          await aplicacaoVault.carregarVaultDoCache(ctx)
+        } else {
+          await aplicacaoVault.carregarVault(ctx)
+        }
         setStatus('pronto')
       } catch (e) {
         if (e instanceof TokenExpiradoError) {
@@ -277,7 +283,11 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         await iniciarCache()
         await iniciarOutbox()
         if (onlineRef.current) {
-          await aplicacaoVault.carregarVault(ctx)
+          if (contarPendencias() > 0 && lerManifestoCache(ctx.vaultId)) {
+            await aplicacaoVault.carregarVaultDoCache(ctx)
+          } else {
+            await aplicacaoVault.carregarVault(ctx)
+          }
         } else {
           await aplicacaoVault.carregarVaultDoCache(ctx)
         }
@@ -459,6 +469,16 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       })
     }
   }, [online, sincronizar])
+
+  // Ao abrir o cofre já online, sincroniza eventuais pendências deixadas por
+  // uma sessão offline anterior.
+  useEffect(() => {
+    if (status === 'pronto' && onlineRef.current) {
+      void sincronizar().catch(() => {
+        /* outros erros ficam visíveis na próxima ação do usuário */
+      })
+    }
+  }, [status, sincronizar])
 
   // Importa automaticamente arquivos compartilhados (Web Share Target) assim
   // que o cofre é desbloqueado e o manifesto carregado.

@@ -1,4 +1,5 @@
 import type { VaultRepository } from '@/domain/ports'
+import type { Manifesto } from '@/domain/entities'
 import { descomprimirGzip, comprimirGzip } from '@/infrastructure/compression'
 import { decifrarComChave, cifrarComChaveComSalt } from '@/infrastructure/cripto/envelope'
 import { ChaveNecessariaError } from '@/infrastructure/cripto/erros'
@@ -16,6 +17,14 @@ export interface DepsVaultRepository {
 }
 
 export function criarDriveVaultRepository(deps: DepsVaultRepository): VaultRepository {
+  async function cifrarManifesto(manifesto: Manifesto): Promise<Uint8Array> {
+    const sessao = deps.obterSessao()
+    if (!sessao) throw new ChaveNecessariaError()
+    const claro = serializarManifesto(manifesto)
+    const comprimido = await comprimirGzip(claro)
+    return cifrarComChaveComSalt(sessao.chave, sessao.salt, sessao.iterations, comprimido)
+  }
+
   return {
     async carregarManifesto() {
       const token = await deps.tokenProvider()
@@ -30,13 +39,13 @@ export function criarDriveVaultRepository(deps: DepsVaultRepository): VaultRepos
     },
     async salvarManifesto(manifesto) {
       const token = await deps.tokenProvider()
-      const sessao = deps.obterSessao()
-      if (!sessao) throw new ChaveNecessariaError()
-      const claro = serializarManifesto(manifesto)
-      const comprimido = await comprimirGzip(claro)
-      const envelope = await cifrarComChaveComSalt(sessao.chave, sessao.salt, sessao.iterations, comprimido)
+      const envelope = await cifrarManifesto(manifesto)
       const { etag } = await drive.atualizarArquivo(token, deps.vaultFileId, envelope, deps.obterEtag())
       deps.definirEtag(etag)
+      await salvarManifestoCache(deps.vaultFileId, envelope)
+    },
+    async salvarManifestoLocal(manifesto) {
+      const envelope = await cifrarManifesto(manifesto)
       await salvarManifestoCache(deps.vaultFileId, envelope)
     },
   }
