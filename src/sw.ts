@@ -33,11 +33,11 @@ function abrirDb(): Promise<IDBDatabase> {
 function bytesParaBase64(bytes: ArrayBuffer): string {
   const arr = new Uint8Array(bytes)
   const CHUNK = 0x8000
-  let bin = ''
+  const partes: string[] = []
   for (let i = 0; i < arr.length; i += CHUNK) {
-    bin += String.fromCharCode(...Array.from(arr.subarray(i, i + CHUNK)))
+    partes.push(String.fromCharCode(...Array.from(arr.subarray(i, i + CHUNK))))
   }
-  return btoa(bin)
+  return btoa(partes.join(''))
 }
 
 function sanitizarNome(nome: string): string {
@@ -98,20 +98,20 @@ async function processarShare(request: Request): Promise<Response> {
     resumo.push(`arquivosDetectados=${files.length}`)
     await gravarDiagnostico(resumo)
 
-    const db = await abrirDb()
-    const tx = db.transaction(INBOX_STORE, 'readwrite')
-    const store = tx.objectStore(INBOX_STORE)
-
+    // Prepara TODAS as entradas antes de abrir a transação. Assim nenhum
+    // `await` acontece entre a criação da transação e os `put`, evitando que o
+    // IndexedDB a encerre automaticamente (TransactionInactiveError).
+    const entradas: { key: string; value: string }[] = []
     for (const file of files) {
       const buffer = await file.arrayBuffer()
-      store.put(
-        JSON.stringify({
+      entradas.push({
+        key: crypto.randomUUID(),
+        value: JSON.stringify({
           nome: file.name,
           mime: file.type || 'application/octet-stream',
           bytesB64: bytesParaBase64(buffer),
         }),
-        crypto.randomUUID(),
-      )
+      })
     }
 
     // Texto e/ou link compartilhados viram uma nota no cofre.
@@ -131,20 +131,26 @@ async function processarShare(request: Request): Promise<Response> {
         mime = 'text/plain'
         conteudo = text
       }
-      store.put(
-        JSON.stringify({
+      entradas.push({
+        key: crypto.randomUUID(),
+        value: JSON.stringify({
           nome,
           mime,
           bytesB64: bytesParaBase64(new TextEncoder().encode(conteudo).buffer),
         }),
-        crypto.randomUUID(),
-      )
+      })
     }
 
-    await new Promise<void>((resolve, reject) => {
-      tx.oncomplete = () => resolve()
-      tx.onerror = () => reject(tx.error)
-    })
+    if (entradas.length > 0) {
+      const db = await abrirDb()
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(INBOX_STORE, 'readwrite')
+        const store = tx.objectStore(INBOX_STORE)
+        for (const e of entradas) store.put(e.value, e.key)
+        tx.oncomplete = () => resolve()
+        tx.onerror = () => reject(tx.error)
+      })
+    }
   } catch {
     // mesmo em falha, redireciona para a tela de Recebidos
   }

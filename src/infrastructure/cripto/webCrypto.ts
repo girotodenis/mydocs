@@ -59,11 +59,11 @@ export function randomBytes(n: number): Uint8Array {
 
 export function bytesBase64(bytes: Uint8Array): string {
   const CHUNK = 0x8000
-  let bin = ''
+  const partes: string[] = []
   for (let i = 0; i < bytes.length; i += CHUNK) {
-    bin += String.fromCharCode(...Array.from(bytes.subarray(i, i + CHUNK)))
+    partes.push(String.fromCharCode(...Array.from(bytes.subarray(i, i + CHUNK))))
   }
-  return btoa(bin)
+  return btoa(partes.join(''))
 }
 
 export function base64ParaBytes(b64: string): Uint8Array {
