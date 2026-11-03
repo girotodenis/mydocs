@@ -25,6 +25,9 @@ jobs:
         run: npm ci
 
       - name: Build
+        env:
+          # Measurement ID público do GA4 (vai no bundle do cliente).
+          VITE_GA_MEASUREMENT_ID: G-5P3Z253FSG
         run: npm run build
 
       - name: Publicar no gh-pages
