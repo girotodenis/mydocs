@@ -1,4 +1,4 @@
-import { FolderLock, Inbox, Lock, LogOut, Moon, Sun, Wallet } from 'lucide-react'
+import { ExternalLink, FolderLock, Inbox, Lock, LogOut, Moon, Sun, Wallet } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { cn } from '@/presentation/cn'
 import { useTheme } from '@/presentation/app/providers/themeContext'
@@ -69,6 +69,23 @@ export function AppLayout() {
                 </li>
               ))}
 
+              {vault.folderId ? (
+                <li>
+                  <a
+                    href={`https://drive.google.com/drive/folders/${vault.folderId}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={cn(
+                      navItemClass,
+                      'border border-slate-200 text-slate-600 hover:bg-brand-50 hover:text-brand-700 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800',
+                    )}
+                  >
+                    <ExternalLink className="h-4 w-4" aria-hidden />
+                    Drive
+                  </a>
+                </li>
+              ) : null}
+
               {vault.status === 'pronto' ? (
                 <li>
                   <button
@@ -122,6 +139,19 @@ export function AppLayout() {
       {!online && vault.autenticado ? (
         <div className="flex items-center justify-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
           Modo offline — as alterações serão sincronizadas ao reconectar.
+        </div>
+      ) : null}
+
+      {vault.sessaoExpirada && vault.autenticado && online ? (
+        <div className="flex flex-wrap items-center justify-center gap-3 border-b border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+          <span>Sessão com o Google expirada.</span>
+          <button
+            type="button"
+            onClick={() => void vault.relogar()}
+            className="rounded-full bg-red-600 px-4 py-1 text-xs font-bold text-white shadow-sm"
+          >
+            Entrar novamente
+          </button>
         </div>
       ) : null}
 

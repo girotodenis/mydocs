@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowUp,
@@ -10,6 +10,7 @@ import {
   FolderPlus,
   FolderInput,
   Image,
+  Loader2,
   Lock,
   LogIn,
   Pencil,
@@ -22,9 +23,11 @@ import { itensDaPasta, resolverCaminho, subpastasDe } from '@/domain/arvore'
 import { formatarBytes } from '@/domain/tamanho'
 import { MAX_FILE_BYTES } from '@/infrastructure/config'
 import { useVault } from '@/presentation/app/providers/vaultProvider'
+import { useLoading } from '@/presentation/app/providers/loadingProvider'
 
 export function VaultPage() {
   const vault = useVault()
+  const loading = useLoading()
   const [senha, setSenha] = useState('')
   const [pastaAtual, setPastaAtualState] = useState<PastaId | null>(null)
   const [carregando, setCarregando] = useState(false)
@@ -51,10 +54,16 @@ export function VaultPage() {
   const itens = useMemo(() => (vault.manifesto ? itensDaPasta(vault.manifesto, pastaAtual) : []), [vault.manifesto, pastaAtual])
   const caminho = useMemo(() => (vault.manifesto ? resolverCaminho(vault.manifesto, pastaAtual) : []), [vault.manifesto, pastaAtual])
 
-  async function comCarregando(fn: () => Promise<void>) {
+  async function entrarNoCofre(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!senha || carregando) return
+    await comCarregando('Abrindo cofre…', () => vault.entrarNoCofre(senha))
+  }
+
+  async function comCarregando(mensagem: string, fn: () => Promise<void>) {
     setCarregando(true)
     try {
-      await fn()
+      await loading.comCarregando(mensagem, fn)
     } catch (e) {
       window.alert(e instanceof Error ? e.message : String(e))
     } finally {
@@ -65,30 +74,33 @@ export function VaultPage() {
   function criarPasta() {
     const nome = window.prompt('Nome da nova pasta')
     if (!nome) return
-    void comCarregando(() => vault.criarPasta(nome, pastaAtual))
+    void comCarregando('Criando pasta…', () => vault.criarPasta(nome, pastaAtual))
   }
 
   function renomearPasta(id: string, nomeAtual: string) {
     const nome = window.prompt('Renomear pasta', nomeAtual)
     if (!nome) return
-    void comCarregando(() => vault.renomearPasta(id, nome))
+    void comCarregando('Renomeando pasta…', () => vault.renomearPasta(id, nome))
   }
 
   function excluirPasta(id: string) {
     if (!window.confirm('Excluir esta pasta e todo o seu conteúdo?')) return
-    void comCarregando(() => vault.excluirPasta(id))
+    void comCarregando('Excluindo pasta…', () => vault.excluirPasta(id))
   }
 
   async function enviarArquivos(files: FileList | null) {
     if (!files || files.length === 0) return
+    const lista = Array.from(files)
     const limiteMB = Math.round(MAX_FILE_BYTES / (1024 * 1024))
-    for (const file of Array.from(files)) {
+    for (const file of lista) {
       if (file.size > MAX_FILE_BYTES) {
         window.alert(`"${file.name}" excede o limite de ${limiteMB} MB`)
         continue
       }
       const bytes = new Uint8Array(await file.arrayBuffer())
-      void comCarregando(() => vault.enviar({ nome: file.name, mime: file.type, bytes, pastaId: pastaAtual }))
+      await comCarregando(`Enviando ${file.name}…`, () =>
+        vault.enviar({ nome: file.name, mime: file.type, bytes, pastaId: pastaAtual }),
+      )
     }
     if (fileRef.current) fileRef.current.value = ''
   }
@@ -96,7 +108,7 @@ export function VaultPage() {
   function renomearItem(id: string, nomeAtual: string) {
     const nome = window.prompt('Renomear arquivo', nomeAtual)
     if (!nome) return
-    void comCarregando(() => vault.renomearItem(id, nome))
+    void comCarregando('Renomeando arquivo…', () => vault.renomearItem(id, nome))
   }
 
   function moverItem(id: string) {
@@ -109,23 +121,29 @@ export function VaultPage() {
       window.alert('Pasta não encontrada')
       return
     }
-    void comCarregando(() => vault.moverItem(id, alvo))
+    void comCarregando('Movendo arquivo…', () => vault.moverItem(id, alvo))
   }
 
   function excluirItem(id: string) {
     if (!window.confirm('Excluir este arquivo?')) return
-    void comCarregando(() => vault.excluirItem(id))
+    void comCarregando('Excluindo arquivo…', () => vault.excluirItem(id))
+  }
+
+  function compartilhar(item: Item) {
+    void comCarregando(`Compartilhando ${item.nome}…`, () => vault.compartilhar(item))
   }
 
   async function baixar(item: Item) {
-    const { bytes } = await vault.abrirItem(item)
-    const blob = new Blob([new Uint8Array(bytes)], { type: item.mime })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = item.nome
-    a.click()
-    URL.revokeObjectURL(url)
+    await loading.comCarregando(`Baixando ${item.nome}…`, async () => {
+      const { bytes } = await vault.abrirItem(item)
+      const blob = new Blob([new Uint8Array(bytes)], { type: item.mime })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = item.nome
+      a.click()
+      URL.revokeObjectURL(url)
+    })
   }
 
   if (!vault.configurado) {
@@ -146,92 +164,63 @@ export function VaultPage() {
         <p className="mt-3 text-slate-600 dark:text-slate-400">Entre com sua conta Google para acessar o cofre.</p>
         <button
           type="button"
-          onClick={() => void comCarregando(vault.login)}
-          className="mt-6 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-brand-500 to-brand-700 px-6 py-2 text-sm font-bold text-white shadow-md shadow-brand-600/40"
+          disabled={carregando}
+          onClick={() => void comCarregando('Conectando ao Google…', vault.login)}
+          className="mt-6 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-brand-500 to-brand-700 px-6 py-2 text-sm font-bold text-white shadow-md shadow-brand-600/40 disabled:opacity-60"
         >
-          <LogIn className="h-4 w-4" aria-hidden />
-          Entrar com Google
+          {carregando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <LogIn className="h-4 w-4" aria-hidden />}
+          {carregando ? 'Conectando…' : 'Entrar com Google'}
         </button>
       </div>
     )
   }
 
-  if (vault.status === 'sem-cofre') {
-    return (
-      <div className="mx-auto max-w-md">
-        <h1 className="text-center text-2xl font-bold text-slate-900 dark:text-slate-100">Cofre</h1>
-        {vault.erro ? (
-          <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{vault.erro}</p>
-        ) : null}
-        <div className="mt-6 space-y-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-            <h2 className="font-semibold text-slate-900 dark:text-slate-100">Abrir cofre existente</h2>
-            <input
-              type="password"
-              value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-              placeholder="Senha"
-              className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-            />
-            <button
-              type="button"
-              disabled={carregando}
-              onClick={() => void comCarregando(() => vault.abrirCofre(senha))}
-              className="mt-3 w-full rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white"
-            >
-              Abrir
-            </button>
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
-            <h2 className="font-semibold text-slate-900 dark:text-slate-100">Criar novo cofre</h2>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Escolha uma senha forte. Não há recuperação.</p>
-            <input
-              type="password"
-              value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-              placeholder="Senha"
-              className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-            />
-            <button
-              type="button"
-              disabled={carregando}
-              onClick={() => void comCarregando(() => vault.criarCofre(senha))}
-              className="mt-3 w-full rounded-lg bg-gradient-to-r from-brand-500 to-brand-700 px-4 py-2 text-sm font-semibold text-white"
-            >
-              Criar cofre
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (vault.status === 'bloqueado') {
+  if (vault.status === 'sem-cofre' || vault.status === 'bloqueado') {
     return (
       <div className="mx-auto max-w-md">
         <h1 className="text-center text-2xl font-bold text-slate-900 dark:text-slate-100">
           <Lock className="mr-2 inline h-5 w-5" aria-hidden />
-          Cofre bloqueado
+          Cofre
         </h1>
-        <input
-          type="password"
-          value={senha}
-          onChange={(e) => setSenha(e.target.value)}
-          placeholder="Senha"
-          className="mt-4 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
-        />
-        <button
-          type="button"
-          disabled={carregando}
-          onClick={() => void comCarregando(async () => {
-            await vault.desbloquear(senha)
-          })}
-          className="mt-3 w-full rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white"
-        >
-          Desbloquear
-        </button>
+        <p className="mt-1 text-center text-xs text-slate-500 dark:text-slate-400">
+          Digite sua senha para entrar. Se o cofre ainda não existir, ele será criado agora.
+        </p>
+        <form onSubmit={(event) => void entrarNoCofre(event)} className="mt-4">
+          <input
+            type="password"
+            value={senha}
+            onChange={(e) => setSenha(e.target.value)}
+            placeholder="Senha"
+            autoComplete="current-password"
+            enterKeyHint="go"
+            aria-label="Senha do cofre"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+          />
+          <button
+            type="submit"
+            disabled={carregando}
+            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {carregando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+            {carregando ? 'Abrindo…' : 'Entrar'}
+          </button>
+        </form>
         {vault.erro ? (
           <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{vault.erro}</p>
+        ) : null}
+        {vault.cofreExiste ? (
+          <button
+            type="button"
+            disabled={carregando}
+            onClick={() => {
+              if (window.confirm('Apagar o cofre e todos os arquivos? Essa ação não pode ser desfeita.')) {
+                void comCarregando('Apagando cofre…', () => vault.apagarCofre())
+              }
+            }}
+            className="mt-3 w-full rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 dark:border-red-500/30 dark:text-red-400 dark:hover:bg-red-500/10"
+          >
+            Apagar cofre
+          </button>
         ) : null}
       </div>
     )
@@ -339,7 +328,7 @@ export function VaultPage() {
               <button type="button" onClick={() => void baixar(item)} className="p-1.5 text-slate-400 hover:text-brand-600" aria-label="Baixar">
                 <Download className="h-4 w-4" aria-hidden />
               </button>
-              <button type="button" onClick={() => void vault.compartilhar(item)} className="p-1.5 text-slate-400 hover:text-brand-600" aria-label="Compartilhar">
+              <button type="button" onClick={() => compartilhar(item)} className="p-1.5 text-slate-400 hover:text-brand-600" aria-label="Compartilhar">
                 <Share2 className="h-4 w-4" aria-hidden />
               </button>
               <button type="button" onClick={() => moverItem(item.id)} className="p-1.5 text-slate-400 hover:text-brand-600" aria-label="Mover">

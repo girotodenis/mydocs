@@ -3,6 +3,8 @@ import type { Manifesto } from './entities'
 export interface VaultRepository {
   carregarManifesto(): Promise<Manifesto>
   salvarManifesto(manifesto: Manifesto): Promise<void>
+  /** Persiste o manifesto apenas no cache local (uso offline), sem tocar no Drive. */
+  salvarManifestoLocal(manifesto: Manifesto): Promise<void>
 }
 
 export interface ItemStore {
@@ -28,7 +30,7 @@ export interface SharePort {
 }
 
 export interface ShareTargetPort {
-  lerRecebidos(): Promise<{ title?: string; text?: string; url?: string; files: ArquivoRecebido[] }>
+  lerRecebidos(): Promise<{ title?: string; text?: string; url?: string; files: ArquivoRecebido[]; debug?: string[] }>
 }
 
 export interface Clock {

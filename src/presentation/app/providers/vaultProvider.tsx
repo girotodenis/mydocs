@@ -13,17 +13,18 @@ import * as aplicacaoShare from '@/application/share'
 import * as aplicacaoSync from '@/application/sync'
 import * as aplicacaoVault from '@/application/vault'
 import { guardarSessao, obterSessao, removerSessao } from '@/infrastructure/cripto/chaveSessao'
-import { listarArquivos } from '@/infrastructure/drive/api'
+import { obterSaltVerificador, removerVerificador } from '@/infrastructure/cripto/verificadorLocal'
+import { excluirArquivo, listarArquivos, TokenExpiradoError } from '@/infrastructure/drive/api'
 import { garantirPastaApp } from '@/infrastructure/drive/pasta'
 import { criarSharePort } from '@/infrastructure/share/navegadorShare'
 import { criarShareTargetPort } from '@/infrastructure/share/inboxShareTarget'
 import { decorarItemStore } from '@/infrastructure/storage/offlineRepositories'
-import { iniciarCache } from '@/infrastructure/storage/cache'
+import { iniciarCache, lerManifestoCache } from '@/infrastructure/storage/cache'
 import { contarPendencias, iniciarOutbox } from '@/infrastructure/storage/outbox'
 import { criarDriveItemStore } from '@/infrastructure/vault/itemStore'
 import { criarDriveVaultRepository } from '@/infrastructure/vault/vaultRepository'
 import { useOnlineStatus } from '@/presentation/hooks/useOnlineStatus'
-import { useAuth } from './authProvider'
+import { tokenExpirado, useAuth } from './authProvider'
 
 const FOLDER_NAME = (import.meta.env.VITE_VAULT_FOLDER_NAME as string | undefined) ?? 'mydocs_vault'
 const WORKSPACE_KEY = 'mydocs:workspace'
@@ -40,16 +41,20 @@ export interface ArquivoUpload {
 interface VaultContextValue {
   status: StatusVault
   vaultId: string
+  folderId: string
   manifesto: Manifesto | null
   email: string | null
   autenticado: boolean
   configurado: boolean
   erro: string | null
   pendentes: number
+  cofreExiste: boolean
+  sessaoExpirada: boolean
   login(): Promise<void>
   logout(): void
-  criarCofre(senha: string): Promise<void>
-  abrirCofre(senha: string): Promise<void>
+  relogar(): Promise<void>
+  entrarNoCofre(senha: string): Promise<void>
+  apagarCofre(): Promise<void>
   desbloquear(senha: string): Promise<boolean>
   bloquear(): void
   criarPasta(nome: string, parentId: PastaId | null): Promise<void>
@@ -63,7 +68,7 @@ interface VaultContextValue {
   abrirItem(item: Item): Promise<{ tipo: TipoPreview; bytes: Uint8Array }>
   compartilhar(item: Item): Promise<void>
   salvarNota(titulo: string, conteudo: string, tipo: TipoNota, pastaId: PastaId | null): Promise<void>
-  processarRecebidos(pastaId: PastaId | null): Promise<number>
+  processarRecebidos(pastaId: PastaId | null, onLog?: (msg: string) => void): Promise<number>
   sincronizar(): Promise<number>
 }
 
@@ -83,11 +88,16 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [manifesto, setManifesto] = useState<Manifesto | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [pendentes, setPendentes] = useState(0)
+  const [cofreExiste, setCofreExiste] = useState(false)
+  const [sessaoExpirada, setSessaoExpirada] = useState(false)
 
   const vaultIdRef = useRef('')
   const folderIdRef = useRef('')
+  const statusRef = useRef<StatusVault>('sem-cofre')
+  statusRef.current = status
   const etagRef = useRef<string | undefined>(undefined)
   const manifestoRef = useRef<Manifesto | null>(null)
+  const importacaoRecebidosRef = useRef<Promise<number> | null>(null)
 
   const sharePort = useMemo(() => criarSharePort(), [])
   const shareTargetPort = useMemo(() => criarShareTargetPort(), [])
@@ -100,12 +110,12 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       get folderId() {
         return folderIdRef.current
       },
-      tokenProvider: () => auth.tokenProvider(),
+      tokenProvider: () => auth.garantirToken(),
       online: () => onlineRef.current,
       get itemStore() {
         return decorarItemStore(
           criarDriveItemStore({
-            tokenProvider: () => auth.tokenProvider(),
+            tokenProvider: () => auth.garantirToken(),
             folderId: folderIdRef.current,
           }),
           () => onlineRef.current,
@@ -113,7 +123,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       },
       get vaultRepository() {
         return criarDriveVaultRepository({
-          tokenProvider: () => auth.tokenProvider(),
+          tokenProvider: () => auth.garantirToken(),
           vaultFileId: vaultIdRef.current,
           obterSessao: () => obterSessao(vaultIdRef.current),
           obterEtag: () => etagRef.current,
@@ -144,36 +154,59 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(WORKSPACE_KEY, JSON.stringify({ vaultId: vaultIdRef.current, folderId: folderIdRef.current }))
   }
 
-  const criarCofre = useCallback(
+  const entrarNoCofre = useCallback(
     async (senha: string) => {
       setErro(null)
       try {
-        const token = await auth.tokenProvider()
-        const novo = await aplicacaoVault.criarNovoCofre(token, senha, FOLDER_NAME)
-        vaultIdRef.current = novo.vaultId
-        folderIdRef.current = novo.folderId
-        guardarSessao(novo.vaultId, novo.sessao)
-        salvarWorkspace()
-        await iniciarCache()
-        await iniciarOutbox()
-        await aplicacaoVault.carregarVault(ctx)
-        setStatus('pronto')
-      } catch (e) {
-        setErro(mensagem(e))
-      }
-    },
-    [auth, ctx],
-  )
+        // Sem internet: abre pelo verificador local + manifesto em cache.
+        if (!onlineRef.current) {
+          const ws = localStorage.getItem(WORKSPACE_KEY)
+          if (!ws) {
+            setErro('Sem conexão e sem cofre neste dispositivo. Conecte-se para abrir o cofre.')
+            return
+          }
+          const { vaultId, folderId } = JSON.parse(ws) as { vaultId: string; folderId: string }
+          vaultIdRef.current = vaultId
+          folderIdRef.current = folderId
+          setCofreExiste(true)
+          if (!obterSaltVerificador(vaultId)) {
+            setErro('Este cofre nunca foi aberto neste dispositivo. Conecte-se para desbloqueá-lo.')
+            return
+          }
+          const ok = await aplicacaoCripto.desbloquear(ctx, senha)
+          if (!ok) {
+            setErro('Senha incorreta')
+            return
+          }
+          await iniciarCache()
+          await iniciarOutbox()
+          await aplicacaoVault.carregarVaultDoCache(ctx)
+          setStatus('pronto')
+          return
+        }
 
-  const abrirCofre = useCallback(
-    async (senha: string) => {
-      setErro(null)
-      try {
-        const token = await auth.tokenProvider()
+        // Online: usa o Google Drive (renova o token automaticamente se expirado).
+        const token = await auth.garantirToken()
         const folderId = await garantirPastaApp(token, FOLDER_NAME)
         const arquivos = await listarArquivos(token, folderId)
         const manifest = arquivos.find((a) => a.name === 'mydocs.manifest')
-        if (!manifest) throw new Error('Nenhum cofre encontrado na sua conta. Crie um novo.')
+        setCofreExiste(Boolean(manifest))
+
+        if (!manifest) {
+          // Cria um cofre novo nesta conta.
+          const novo = await aplicacaoVault.criarNovoCofre(token, senha, FOLDER_NAME)
+          vaultIdRef.current = novo.vaultId
+          folderIdRef.current = novo.folderId
+          guardarSessao(novo.vaultId, novo.sessao)
+          salvarWorkspace()
+          await iniciarCache()
+          await iniciarOutbox()
+          await aplicacaoVault.carregarVault(ctx)
+          setStatus('pronto')
+          return
+        }
+
+        // Abre o cofre existente.
         vaultIdRef.current = manifest.id
         folderIdRef.current = folderId
         salvarWorkspace()
@@ -184,19 +217,63 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         }
         await iniciarCache()
         await iniciarOutbox()
-        await aplicacaoVault.carregarVault(ctx)
+        // Se há alterações offline pendentes, parte do cache local (que reflete
+        // as edições feitas sem internet) para sincronizá-las com o Drive.
+        if (contarPendencias() > 0 && lerManifestoCache(vaultIdRef.current)) {
+          await aplicacaoVault.carregarVaultDoCache(ctx)
+        } else {
+          await aplicacaoVault.carregarVault(ctx)
+        }
         setStatus('pronto')
       } catch (e) {
+        if (e instanceof TokenExpiradoError) {
+          setSessaoExpirada(true)
+          setErro('Sessão com o Google expirada. Toque em "Entrar novamente" para reconectar.')
+          return
+        }
         setErro(mensagem(e))
       }
     },
     [auth, ctx],
   )
 
+  const apagarCofre = useCallback(async () => {
+    setErro(null)
+    try {
+      const token = await auth.garantirToken()
+      const folderId = await garantirPastaApp(token, FOLDER_NAME)
+      const arquivos = await listarArquivos(token, folderId)
+      for (const arquivo of arquivos) {
+        await excluirArquivo(token, arquivo.id)
+      }
+      removerSessao(vaultIdRef.current)
+      removerVerificador(vaultIdRef.current)
+      localStorage.removeItem(WORKSPACE_KEY)
+      vaultIdRef.current = ''
+      folderIdRef.current = ''
+      etagRef.current = undefined
+      manifestoRef.current = null
+      setManifesto(null)
+      setCofreExiste(false)
+      setStatus('sem-cofre')
+    } catch (e) {
+      if (e instanceof TokenExpiradoError) {
+        setSessaoExpirada(true)
+        setErro('Sessão com o Google expirada. Toque em "Entrar novamente" para reconectar.')
+        return
+      }
+      setErro(mensagem(e))
+    }
+  }, [auth])
+
   const desbloquear = useCallback(
     async (senha: string) => {
       setErro(null)
       try {
+        if (!onlineRef.current && !obterSaltVerificador(ctx.vaultId)) {
+          setErro('Este cofre nunca foi aberto neste dispositivo. Conecte-se para desbloqueá-lo.')
+          return false
+        }
         const ok = await aplicacaoCripto.desbloquear(ctx, senha)
         if (!ok) {
           setErro('Senha incorreta')
@@ -204,11 +281,24 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         }
         await iniciarCache()
         await iniciarOutbox()
-        await aplicacaoVault.carregarVault(ctx)
+        if (onlineRef.current) {
+          if (contarPendencias() > 0 && lerManifestoCache(ctx.vaultId)) {
+            await aplicacaoVault.carregarVaultDoCache(ctx)
+          } else {
+            await aplicacaoVault.carregarVault(ctx)
+          }
+        } else {
+          await aplicacaoVault.carregarVaultDoCache(ctx)
+        }
         setStatus('pronto')
         return true
       } catch (e) {
-        setErro(mensagem(e))
+        if (e instanceof TokenExpiradoError) {
+          setSessaoExpirada(true)
+          setErro('Sessão com o Google expirada. Toque em "Entrar novamente" para reconectar.')
+        } else {
+          setErro(mensagem(e))
+        }
         return false
       }
     },
@@ -225,6 +315,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     auth.logout()
     removerSessao(vaultIdRef.current)
+    setCofreExiste(false)
+    setSessaoExpirada(false)
     vaultIdRef.current = ''
     folderIdRef.current = ''
     etagRef.current = undefined
@@ -239,12 +331,16 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       if (status !== 'sem-cofre') logout()
       return
     }
+    // Detecta token expirado logo na abertura, para avisar o usuário antes de
+    // qualquer tentativa de acesso ao Drive.
+    setSessaoExpirada(tokenExpirado(auth.token))
     const ws = localStorage.getItem(WORKSPACE_KEY)
     if (ws && status === 'sem-cofre') {
       try {
         const { vaultId, folderId } = JSON.parse(ws) as { vaultId: string; folderId: string }
         vaultIdRef.current = vaultId
         folderIdRef.current = folderId
+        setCofreExiste(true)
         setStatus('bloqueado')
       } catch {
         /* workspace inválido */
@@ -252,60 +348,161 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     }
   }, [auth.token, status, logout])
 
-  const criarPasta = useCallback(async (nome: string, parentId: PastaId | null) => {
-    await aplicacaoPastas.criarPasta(ctx, nome, parentId)
-  }, [ctx])
-  const renomearPasta = useCallback((id: string, nome: string) => aplicacaoPastas.renomearPastaUseCase(ctx, id, nome), [ctx])
-  const excluirPasta = useCallback((id: string) => aplicacaoPastas.excluirPastaUseCase(ctx, id), [ctx])
-  const enviar = useCallback(async (arquivo: ArquivoUpload) => {
-    await aplicacaoItens.enviarArquivo(ctx, arquivo)
-  }, [ctx])
+  /**
+   * Encapsula operações que podem falhar por token expirado (HTTP 401): nesse
+   * caso marca a sessão como expirada e devolve uma mensagem amigável.
+   */
+  const comAuth = useCallback(async <T,>(op: () => Promise<T>): Promise<T> => {
+    try {
+      return await op()
+    } catch (e) {
+      if (e instanceof TokenExpiradoError) {
+        setSessaoExpirada(true)
+        throw new Error('Sessão com o Google expirada. Toque em "Entrar novamente" para reconectar.')
+      }
+      throw e
+    }
+  }, [])
+
+  const criarPasta = useCallback(
+    async (nome: string, parentId: PastaId | null) => {
+      await comAuth(() => aplicacaoPastas.criarPasta(ctx, nome, parentId))
+    },
+    [ctx, comAuth],
+  )
+  const renomearPasta = useCallback(
+    (id: string, nome: string) => comAuth(() => aplicacaoPastas.renomearPastaUseCase(ctx, id, nome)),
+    [ctx, comAuth],
+  )
+  const excluirPasta = useCallback(
+    (id: string) => comAuth(() => aplicacaoPastas.excluirPastaUseCase(ctx, id)),
+    [ctx, comAuth],
+  )
+  const enviar = useCallback(
+    async (arquivo: ArquivoUpload) => {
+      await comAuth(() => aplicacaoItens.enviarArquivo(ctx, arquivo))
+    },
+    [ctx, comAuth],
+  )
   const atualizarItem = useCallback(
     (id: string, nome: string, mime: string, bytes: Uint8Array) =>
-      aplicacaoItens.atualizarItemConteudo(ctx, id, nome, mime, bytes),
-    [ctx],
+      comAuth(() => aplicacaoItens.atualizarItemConteudo(ctx, id, nome, mime, bytes)),
+    [ctx, comAuth],
   )
-  const renomearItem = useCallback((id: string, nome: string) => aplicacaoItens.renomearItemUseCase(ctx, id, nome), [ctx])
+  const renomearItem = useCallback(
+    (id: string, nome: string) => comAuth(() => aplicacaoItens.renomearItemUseCase(ctx, id, nome)),
+    [ctx, comAuth],
+  )
   const moverItem = useCallback(
-    (id: string, pastaId: PastaId | null) => aplicacaoItens.moverItemUseCase(ctx, id, pastaId),
-    [ctx],
+    (id: string, pastaId: PastaId | null) => comAuth(() => aplicacaoItens.moverItemUseCase(ctx, id, pastaId)),
+    [ctx, comAuth],
   )
-  const excluirItem = useCallback((id: string) => aplicacaoItens.excluirItemUseCase(ctx, id), [ctx])
-  const abrirItem = useCallback((item: Item) => aplicacaoPreview.abrirItem(ctx, item), [ctx])
-  const compartilhar = useCallback((item: Item) => aplicacaoShare.compartilharItem(ctx, item), [ctx])
+  const excluirItem = useCallback(
+    (id: string) => comAuth(() => aplicacaoItens.excluirItemUseCase(ctx, id)),
+    [ctx, comAuth],
+  )
+  const abrirItem = useCallback(
+    (item: Item) => comAuth(() => aplicacaoPreview.abrirItem(ctx, item)),
+    [ctx, comAuth],
+  )
+  const compartilhar = useCallback(
+    (item: Item) => comAuth(() => aplicacaoShare.compartilharItem(ctx, item)),
+    [ctx, comAuth],
+  )
   const salvarNota = useCallback(
     (titulo: string, conteudo: string, tipo: TipoNota, pastaId: PastaId | null) =>
-      aplicacaoEditor.salvarNota(ctx, titulo, conteudo, tipo, pastaId),
-    [ctx],
+      comAuth(() => aplicacaoEditor.salvarNota(ctx, titulo, conteudo, tipo, pastaId)),
+    [ctx, comAuth],
   )
   const processarRecebidos = useCallback(
-    (pastaId: PastaId | null) => aplicacaoRecebidos.processarRecebidos(ctx, pastaId),
-    [ctx],
+    (pastaId: PastaId | null, onLog?: (msg: string) => void) => {
+      if (!importacaoRecebidosRef.current) {
+        importacaoRecebidosRef.current = comAuth(() =>
+          aplicacaoRecebidos.processarRecebidos(ctx, pastaId, onLog),
+        ).finally(() => {
+          importacaoRecebidosRef.current = null
+        })
+      }
+      return importacaoRecebidosRef.current
+    },
+    [ctx, comAuth],
   )
   const sincronizar = useCallback(async () => {
-    const n = await aplicacaoSync.sincronizar(ctx)
-    setPendentes(contarPendencias())
-    return n
+    try {
+      const n = await aplicacaoSync.sincronizar(ctx)
+      setPendentes(contarPendencias())
+      setSessaoExpirada(false)
+      return n
+    } catch (e) {
+      if (e instanceof TokenExpiradoError) {
+        setSessaoExpirada(true)
+        return 0
+      }
+      throw e
+    }
   }, [ctx])
+
+  const relogar = useCallback(async () => {
+    setErro(null)
+    try {
+      await auth.login()
+      setSessaoExpirada(false)
+      if (statusRef.current === 'pronto') {
+        await sincronizar()
+      }
+    } catch (e) {
+      setErro(mensagem(e))
+    }
+  }, [auth, sincronizar])
 
   useEffect(() => {
     setPendentes(contarPendencias())
   }, [manifesto])
 
+  // Ao reconectar, reaplica as mutações pendentes do outbox.
+  const esteveOnline = useRef(online)
+  useEffect(() => {
+    const reconectou = online && !esteveOnline.current
+    esteveOnline.current = online
+    if (reconectou && statusRef.current === 'pronto') {
+      void sincronizar().catch(() => {
+        /* outros erros ficam visíveis na próxima ação do usuário */
+      })
+    }
+  }, [online, sincronizar])
+
+  // Ao abrir o cofre já online, sincroniza eventuais pendências deixadas por
+  // uma sessão offline anterior.
+  useEffect(() => {
+    if (status === 'pronto' && onlineRef.current) {
+      void sincronizar().catch(() => {
+        /* outros erros ficam visíveis na próxima ação do usuário */
+      })
+    }
+  }, [status, sincronizar])
+
+  // A importação de conteúdos recebidos (Web Share Target) é disparada pela
+  // tela de Recebidos — para onde o share target redireciona — e lá exibe o
+  // indicador de progresso.
+
   const value = useMemo<VaultContextValue>(
     () => ({
       status,
       vaultId: vaultIdRef.current,
+      folderId: folderIdRef.current,
       manifesto,
       email: auth.email,
       autenticado: Boolean(auth.token),
       configurado: auth.configurado,
       erro,
       pendentes,
+      cofreExiste,
+      sessaoExpirada,
       login: auth.login,
       logout,
-      criarCofre,
-      abrirCofre,
+      relogar,
+      entrarNoCofre,
+      apagarCofre,
       desbloquear,
       bloquear,
       criarPasta,
@@ -331,9 +528,12 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       auth.login,
       erro,
       pendentes,
+      cofreExiste,
+      sessaoExpirada,
       logout,
-      criarCofre,
-      abrirCofre,
+      relogar,
+      entrarNoCofre,
+      apagarCofre,
       desbloquear,
       bloquear,
       criarPasta,

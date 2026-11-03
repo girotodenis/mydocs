@@ -32,33 +32,125 @@ function abrirDb(): Promise<IDBDatabase> {
 
 function bytesParaBase64(bytes: ArrayBuffer): string {
   const arr = new Uint8Array(bytes)
-  let bin = ''
-  for (const b of arr) bin += String.fromCharCode(b)
-  return btoa(bin)
+  const CHUNK = 0x8000
+  const partes: string[] = []
+  for (let i = 0; i < arr.length; i += CHUNK) {
+    partes.push(String.fromCharCode(...Array.from(arr.subarray(i, i + CHUNK))))
+  }
+  return btoa(partes.join(''))
+}
+
+function sanitizarNome(nome: string): string {
+  return nome
+    .replace(/[\\/:*?"<>|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80)
+}
+
+/**
+ * Coleta os arquivos compartilhados. O campo padrão é `file`, mas alguns
+ * navegadores/apps enviam o arquivo sob outro nome — por isso cai no
+ * fallback que varre todos os valores do formulário.
+ */
+function extrairArquivos(formData: FormData): File[] {
+  const diretos = formData.getAll('file').filter((v): v is File => typeof v !== 'string')
+  if (diretos.length > 0) return diretos
+  const todos: File[] = []
+  formData.forEach((value) => {
+    if (typeof value !== 'string') todos.push(value)
+  })
+  return todos
+}
+
+/**
+ * Grava um resumo do que o service worker recebeu, para a tela de Recebidos
+ * exibir no log de depuração. Usa transação própria para sobreviver mesmo que
+ * a gravação dos arquivos falhe depois.
+ */
+async function gravarDiagnostico(resumo: string[]): Promise<void> {
+  try {
+    const db = await abrirDb()
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(INBOX_STORE, 'readwrite')
+      tx.objectStore(INBOX_STORE).put(JSON.stringify({ tipo: 'debug', resumo }), `debug-${crypto.randomUUID()}`)
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error)
+    })
+  } catch {
+    /* diagnóstico não deve impedir o fluxo */
+  }
 }
 
 async function processarShare(request: Request): Promise<Response> {
   try {
     const formData = await request.formData()
-    const db = await abrirDb()
-    const tx = db.transaction(INBOX_STORE, 'readwrite')
-    const store = tx.objectStore(INBOX_STORE)
-    const files = formData.getAll('file') as File[]
+
+    const files = extrairArquivos(formData)
+    const resumo: string[] = []
+    formData.forEach((value, key) => {
+      if (typeof value === 'string') {
+        resumo.push(`${key}=texto(${value.slice(0, 80)})`)
+      } else {
+        resumo.push(`${key}=arquivo(${value.name}, ${value.size} bytes, ${value.type || 'sem-mime'})`)
+      }
+    })
+    resumo.push(`arquivosDetectados=${files.length}`)
+    await gravarDiagnostico(resumo)
+
+    // Prepara TODAS as entradas antes de abrir a transação. Assim nenhum
+    // `await` acontece entre a criação da transação e os `put`, evitando que o
+    // IndexedDB a encerre automaticamente (TransactionInactiveError).
+    const entradas: { key: string; value: string }[] = []
     for (const file of files) {
       const buffer = await file.arrayBuffer()
-      store.put(
-        JSON.stringify({
+      entradas.push({
+        key: crypto.randomUUID(),
+        value: JSON.stringify({
           nome: file.name,
           mime: file.type || 'application/octet-stream',
           bytesB64: bytesParaBase64(buffer),
         }),
-        crypto.randomUUID(),
-      )
+      })
     }
-    await new Promise<void>((resolve, reject) => {
-      tx.oncomplete = () => resolve()
-      tx.onerror = () => reject(tx.error)
-    })
+
+    // Texto e/ou link compartilhados viram uma nota no cofre.
+    const title = typeof formData.get('title') === 'string' ? (formData.get('title') as string) : ''
+    const text = typeof formData.get('text') === 'string' ? (formData.get('text') as string) : ''
+    const url = typeof formData.get('url') === 'string' ? (formData.get('url') as string) : ''
+    if (text || url) {
+      let nome: string
+      let mime: string
+      let conteudo: string
+      if (url) {
+        nome = `${sanitizarNome(title) || 'link'}.md`
+        mime = 'text/markdown'
+        conteudo = text ? `${text}\n\n[${title || url}](${url})` : `[${title || url}](${url})`
+      } else {
+        nome = `${sanitizarNome(title) || 'nota'}.txt`
+        mime = 'text/plain'
+        conteudo = text
+      }
+      entradas.push({
+        key: crypto.randomUUID(),
+        value: JSON.stringify({
+          nome,
+          mime,
+          bytesB64: bytesParaBase64(new TextEncoder().encode(conteudo).buffer),
+        }),
+      })
+    }
+
+    if (entradas.length > 0) {
+      const db = await abrirDb()
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(INBOX_STORE, 'readwrite')
+        const store = tx.objectStore(INBOX_STORE)
+        for (const e of entradas) store.put(e.value, e.key)
+        tx.oncomplete = () => resolve()
+        tx.onerror = () => reject(tx.error)
+      })
+    }
   } catch {
     // mesmo em falha, redireciona para a tela de Recebidos
   }

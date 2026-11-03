@@ -5,7 +5,7 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { html } from '@codemirror/lang-html'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { ArrowLeft, Eye, Pencil, Save } from 'lucide-react'
+import { ArrowLeft, Eye, Loader2, Pencil, Save } from 'lucide-react'
 import { useVault } from '@/presentation/app/providers/vaultProvider'
 import { useTheme } from '@/presentation/app/providers/themeContext'
 import { cn } from '@/presentation/cn'
@@ -99,10 +99,10 @@ export function EditorPage() {
           type="button"
           disabled={salvando}
           onClick={() => void salvar()}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
         >
-          <Save className="h-4 w-4" aria-hidden />
-          Salvar
+          {salvando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Save className="h-4 w-4" aria-hidden />}
+          {salvando ? 'Salvando…' : 'Salvar'}
         </button>
       </div>
 

@@ -5,16 +5,22 @@ import { App } from '@/presentation/app/App'
 import { ThemeProvider } from '@/presentation/app/providers/themeContext'
 import { AuthProvider } from '@/presentation/app/providers/authProvider'
 import { VaultProvider } from '@/presentation/app/providers/vaultProvider'
+import { LoadingProvider } from '@/presentation/app/providers/loadingProvider'
+import { initAnalytics } from '@/infrastructure/analytics'
 import '@/index.css'
+
+initAnalytics()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeProvider>
       <AuthProvider>
         <VaultProvider>
-          <BrowserRouter basename="/mydocs">
-            <App />
-          </BrowserRouter>
+          <LoadingProvider>
+            <BrowserRouter basename="/mydocs">
+              <App />
+            </BrowserRouter>
+          </LoadingProvider>
         </VaultProvider>
       </AuthProvider>
     </ThemeProvider>
