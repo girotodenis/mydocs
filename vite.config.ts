@@ -22,7 +22,20 @@ const manifest = {
       title: 'title',
       text: 'text',
       url: 'url',
-      files: [{ name: 'file', accept: ['image/*', 'text/*', 'application/json', 'application/xml'] }],
+      files: [
+        {
+          name: 'file',
+          accept: [
+            'image/*',
+            'video/*',
+            'audio/*',
+            'text/*',
+            'application/json',
+            'application/xml',
+            'application/pdf',
+          ],
+        },
+      ],
     },
   },
 } as ManifestOptions

@@ -58,8 +58,11 @@ export function randomBytes(n: number): Uint8Array {
 }
 
 export function bytesBase64(bytes: Uint8Array): string {
+  const CHUNK = 0x8000
   let bin = ''
-  for (const b of bytes) bin += String.fromCharCode(b)
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode(...Array.from(bytes.subarray(i, i + CHUNK)))
+  }
   return btoa(bin)
 }
 

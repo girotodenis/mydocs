@@ -32,8 +32,11 @@ function abrirDb(): Promise<IDBDatabase> {
 
 function bytesParaBase64(bytes: ArrayBuffer): string {
   const arr = new Uint8Array(bytes)
+  const CHUNK = 0x8000
   let bin = ''
-  for (const b of arr) bin += String.fromCharCode(b)
+  for (let i = 0; i < arr.length; i += CHUNK) {
+    bin += String.fromCharCode(...Array.from(arr.subarray(i, i + CHUNK)))
+  }
   return btoa(bin)
 }
 
