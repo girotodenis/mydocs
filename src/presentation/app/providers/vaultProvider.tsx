@@ -93,6 +93,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const etagRef = useRef<string | undefined>(undefined)
   const manifestoRef = useRef<Manifesto | null>(null)
   const importouRecebidosRef = useRef(false)
+  const importacaoRecebidosRef = useRef<Promise<number> | null>(null)
 
   const sharePort = useMemo(() => criarSharePort(), [])
   const shareTargetPort = useMemo(() => criarShareTargetPort(), [])
@@ -305,7 +306,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     [ctx],
   )
   const processarRecebidos = useCallback(
-    (pastaId: PastaId | null) => aplicacaoRecebidos.processarRecebidos(ctx, pastaId),
+    (pastaId: PastaId | null) => {
+      if (!importacaoRecebidosRef.current) {
+        importacaoRecebidosRef.current = aplicacaoRecebidos.processarRecebidos(ctx, pastaId).finally(() => {
+          importacaoRecebidosRef.current = null
+        })
+      }
+      return importacaoRecebidosRef.current
+    },
     [ctx],
   )
   const sincronizar = useCallback(async () => {
@@ -327,10 +335,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     }
     if (importouRecebidosRef.current) return
     importouRecebidosRef.current = true
-    void aplicacaoRecebidos.processarRecebidos(ctx, null).catch(() => {
+    void processarRecebidos(null).catch(() => {
       /* pendências ficam para a tela de Recebidos */
     })
-  }, [status, ctx])
+  }, [status, processarRecebidos])
 
   const value = useMemo<VaultContextValue>(
     () => ({
