@@ -5,8 +5,24 @@ export interface DriveFileInfo {
   modifiedTime: string
 }
 
+/**
+ * Indica que o token do Google expirou/foi revogado (HTTP 401) e que o usuário
+ * precisa autenticar novamente.
+ */
+export class TokenExpiradoError extends Error {
+  constructor(operacao: string) {
+    super(`Sessão com o Google expirada (${operacao})`)
+    this.name = 'TokenExpiradoError'
+  }
+}
+
 const BASE = 'https://www.googleapis.com/drive/v3'
 const UPLOAD_BASE = 'https://www.googleapis.com/upload/drive/v3'
+
+function erroDaResposta(res: Response, operacao: string): Error {
+  if (res.status === 401) return new TokenExpiradoError(operacao)
+  return new Error(`Drive ${operacao}: ${res.status}`)
+}
 
 async function fetchComTimeout(url: string, init: RequestInit, timeoutMs = 15_000): Promise<Response> {
   const ctrl = new AbortController()
@@ -28,7 +44,7 @@ export async function listarArquivos(token: string, folderId: string): Promise<D
     `${BASE}/files?q=${q}&fields=files(id,name,mimeType,modifiedTime)&pageSize=1000`,
     { headers: auth(token) },
   )
-  if (!res.ok) throw new Error(`Drive listar: ${res.status}`)
+  if (!res.ok) throw erroDaResposta(res, 'listar')
   const data = (await res.json()) as { files?: DriveFileInfo[] }
   return data.files ?? []
 }
@@ -38,7 +54,7 @@ export async function buscarPastaPorNome(token: string, nome: string): Promise<s
   const res = await fetchComTimeout(`${BASE}/files?q=${q}&fields=files(id)&pageSize=1`, {
     headers: auth(token),
   })
-  if (!res.ok) throw new Error(`Drive buscar pasta: ${res.status}`)
+  if (!res.ok) throw erroDaResposta(res, 'buscar pasta')
   const data = (await res.json()) as { files?: { id: string }[] }
   return data.files?.[0]?.id ?? null
 }
@@ -53,7 +69,7 @@ export async function criarPastaDrive(token: string, nome: string, parentId?: st
       ...(parentId ? { parents: [parentId] } : {}),
     }),
   })
-  if (!res.ok) throw new Error(`Drive criar pasta: ${res.status}`)
+  if (!res.ok) throw erroDaResposta(res, 'criar pasta')
   const data = (await res.json()) as { id: string }
   return data.id
 }
@@ -82,7 +98,7 @@ export async function criarArquivoMultipart(
     headers: { ...auth(token), 'Content-Type': `multipart/related; boundary=${boundary}` },
     body: corpo.buffer,
   })
-  if (!res.ok) throw new Error(`Drive upload: ${res.status}`)
+  if (!res.ok) throw erroDaResposta(res, 'upload')
   const data = (await res.json()) as { id: string }
   return data.id
 }
@@ -92,7 +108,7 @@ export async function baixarArquivoComEtag(
   fileId: string,
 ): Promise<{ bytes: Uint8Array; etag?: string }> {
   const res = await fetchComTimeout(`${BASE}/files/${fileId}?alt=media`, { headers: auth(token) })
-  if (!res.ok) throw new Error(`Drive baixar: ${res.status}`)
+  if (!res.ok) throw erroDaResposta(res, 'baixar')
   const buf = await res.arrayBuffer()
   return { bytes: new Uint8Array(buf), etag: res.headers.get('ETag') ?? undefined }
 }
@@ -113,7 +129,7 @@ export async function atualizarArquivo(
     headers,
     body: new Uint8Array(bytes).buffer,
   })
-  if (!res.ok) throw new Error(`Drive atualizar: ${res.status}`)
+  if (!res.ok) throw erroDaResposta(res, 'atualizar')
   const data = (await res.json().catch(() => ({}))) as { etag?: string }
   return { etag: data.etag }
 }
@@ -123,5 +139,5 @@ export async function excluirArquivo(token: string, fileId: string): Promise<voi
     method: 'DELETE',
     headers: auth(token),
   })
-  if (!res.ok) throw new Error(`Drive excluir: ${res.status}`)
+  if (!res.ok) throw erroDaResposta(res, 'excluir')
 }

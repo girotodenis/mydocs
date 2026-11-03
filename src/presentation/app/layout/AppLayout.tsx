@@ -142,6 +142,19 @@ export function AppLayout() {
         </div>
       ) : null}
 
+      {vault.sessaoExpirada && vault.autenticado && online ? (
+        <div className="flex flex-wrap items-center justify-center gap-3 border-b border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+          <span>Sessão com o Google expirada.</span>
+          <button
+            type="button"
+            onClick={() => void vault.relogar()}
+            className="rounded-full bg-red-600 px-4 py-1 text-xs font-bold text-white shadow-sm"
+          >
+            Entrar novamente
+          </button>
+        </div>
+      ) : null}
+
       <main id="conteudo" tabIndex={-1} className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 focus:outline-none">
         <Outlet />
       </main>
