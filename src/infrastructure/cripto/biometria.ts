@@ -1,6 +1,7 @@
 import { base64ParaBytes, bytesBase64, cifrarGCM, decifrarGCM, importarChaveRaw, randomBytes } from './webCrypto'
 
 const PREFIXO = 'mydocs:biometria:'
+const CHAVE_SEM_SUPORTE = 'mydocs:biometria:sem-suporte'
 
 interface RegistroBiometria {
   credentialId: string
@@ -20,8 +21,33 @@ export function suporteBiometria(): boolean {
     typeof window !== 'undefined' &&
     window.isSecureContext === true &&
     'credentials' in navigator &&
-    typeof PublicKeyCredential !== 'undefined'
+    typeof PublicKeyCredential !== 'undefined' &&
+    localStorage.getItem(CHAVE_SEM_SUPORTE) === null
   )
+}
+
+export function marcarSemSuporteBiometria(): void {
+  localStorage.setItem(CHAVE_SEM_SUPORTE, '1')
+}
+
+/**
+ * Verificação assíncrona usada na abertura do app: além dos requisitos básicos,
+ * confirma se existe um autenticador de plataforma com verificação biométrica.
+ * Não dispara prompt ao usuário.
+ */
+export async function verificarSuporteBiometria(): Promise<boolean> {
+  if (!suporteBiometria()) return false
+  try {
+    const cred = PublicKeyCredential as unknown as {
+      isUserVerifyingPlatformAuthenticatorAvailable?: () => Promise<boolean>
+    }
+    if (typeof cred.isUserVerifyingPlatformAuthenticatorAvailable === 'function') {
+      return await cred.isUserVerifyingPlatformAuthenticatorAvailable()
+    }
+  } catch {
+    // API indisponível: mantém o suporte básico já verificado.
+  }
+  return true
 }
 
 export function biometriaConfigurada(vaultId: string): boolean {
@@ -62,8 +88,9 @@ async function derivarSegredo(credentialId: Uint8Array, prfSalt: Uint8Array): Pr
 
   const resultado = assertion.getClientExtensionResults() as ResultadoPrf
   const prf = resultado.prf
-  if (!prf?.enabled || !prf.results?.first) {
-    throw new Error('Este autenticador não suporta desbloqueio biométrico (PRF).')
+  // Alguns navegadores omitem o campo `enabled`; o que importa é vir o `first`.
+  if (!prf || !prf.results?.first) {
+    throw new Error('Este autenticador não suporta desbloqueio biométrico (PRF). Atualize o navegador/sistema.')
   }
   return new Uint8Array(prf.results.first) as Uint8Array
 }
@@ -115,7 +142,14 @@ export async function configurarBiometria(
     segredo = new Uint8Array(primeiro) as Uint8Array
   }
   if (!segredo) {
-    segredo = await derivarSegredo(credentialId, prfSalt)
+    try {
+      segredo = await derivarSegredo(credentialId, prfSalt)
+    } catch (e) {
+      if (e instanceof Error && e.message.includes('(PRF)')) {
+        marcarSemSuporteBiometria()
+      }
+      throw e
+    }
   }
 
   const chaveSegredo = await importarChaveRaw(segredo)

@@ -14,7 +14,12 @@ import * as aplicacaoSync from '@/application/sync'
 import * as aplicacaoVault from '@/application/vault'
 import { guardarSessao, obterSessao, removerSessao } from '@/infrastructure/cripto/chaveSessao'
 import { obterSaltVerificador, removerVerificador } from '@/infrastructure/cripto/verificadorLocal'
-import { biometriaConfigurada, removerBiometria, suporteBiometria } from '@/infrastructure/cripto/biometria'
+import {
+  biometriaConfigurada,
+  removerBiometria,
+  suporteBiometria,
+  verificarSuporteBiometria,
+} from '@/infrastructure/cripto/biometria'
 import { excluirArquivo, listarArquivos, TokenExpiradoError } from '@/infrastructure/drive/api'
 import { garantirPastaApp } from '@/infrastructure/drive/pasta'
 import { criarSharePort } from '@/infrastructure/share/navegadorShare'
@@ -95,7 +100,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [pendentes, setPendentes] = useState(0)
   const [cofreExiste, setCofreExiste] = useState(false)
   const [sessaoExpirada, setSessaoExpirada] = useState(false)
-  const biometriaSuportada = useMemo(() => suporteBiometria(), [])
+  const [biometriaSuportada, setBiometriaSuportada] = useState(false)
   const [biometriaAtiva, setBiometriaAtiva] = useState(false)
 
   const vaultIdRef = useRef('')
@@ -317,8 +322,14 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const ativarBiometria = useCallback(async () => {
     const sessao = obterSessao(vaultIdRef.current)
     if (!sessao) throw new Error('Cofre não está desbloqueado.')
-    await aplicacaoCripto.ativarBiometria(ctx, sessao, auth.email ?? '')
-    setBiometriaAtiva(biometriaConfigurada(vaultIdRef.current))
+    try {
+      await aplicacaoCripto.ativarBiometria(ctx, sessao, auth.email ?? '')
+      setBiometriaAtiva(biometriaConfigurada(vaultIdRef.current))
+    } catch (e) {
+      // Se o aparelho não suporta PRF, esconde a opção de biometria a partir de agora.
+      setBiometriaSuportada(suporteBiometria())
+      throw e
+    }
   }, [auth.email, ctx])
 
   const desbloquearComBiometria = useCallback(async () => {
@@ -395,6 +406,17 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setBiometriaAtiva(biometriaSuportada && biometriaConfigurada(vaultIdRef.current))
   }, [biometriaSuportada, status])
+
+  // Verifica uma única vez se o aparelho oferece autenticador biométrico de plataforma.
+  useEffect(() => {
+    let ativo = true
+    void verificarSuporteBiometria().then((ok) => {
+      if (ativo) setBiometriaSuportada(ok)
+    })
+    return () => {
+      ativo = false
+    }
+  }, [])
 
   /**
    * Encapsula operações que podem falhar por token expirado (HTTP 401): nesse
