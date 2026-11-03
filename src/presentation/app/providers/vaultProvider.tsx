@@ -97,7 +97,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   statusRef.current = status
   const etagRef = useRef<string | undefined>(undefined)
   const manifestoRef = useRef<Manifesto | null>(null)
-  const importouRecebidosRef = useRef(false)
   const importacaoRecebidosRef = useRef<Promise<number> | null>(null)
 
   const sharePort = useMemo(() => criarSharePort(), [])
@@ -480,19 +479,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     }
   }, [status, sincronizar])
 
-  // Importa automaticamente arquivos compartilhados (Web Share Target) assim
-  // que o cofre é desbloqueado e o manifesto carregado.
-  useEffect(() => {
-    if (status !== 'pronto') {
-      importouRecebidosRef.current = false
-      return
-    }
-    if (importouRecebidosRef.current) return
-    importouRecebidosRef.current = true
-    void processarRecebidos(null).catch(() => {
-      /* pendências ficam para a tela de Recebidos */
-    })
-  }, [status, processarRecebidos])
+  // A importação de conteúdos recebidos (Web Share Target) é disparada pela
+  // tela de Recebidos — para onde o share target redireciona — e lá exibe o
+  // indicador de progresso.
 
   const value = useMemo<VaultContextValue>(
     () => ({

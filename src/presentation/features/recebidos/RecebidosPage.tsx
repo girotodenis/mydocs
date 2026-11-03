@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { Inbox, LockKeyhole, LogIn } from 'lucide-react'
+import { Inbox, Loader2, LockKeyhole, LogIn } from 'lucide-react'
 import { useVault } from '@/presentation/app/providers/vaultProvider'
+import { useLoading } from '@/presentation/app/providers/loadingProvider'
 
 export function RecebidosPage() {
   const vault = useVault()
+  const loading = useLoading()
   const { status, processarRecebidos } = vault
   const [mensagem, setMensagem] = useState('')
   const [carregando, setCarregando] = useState(false)
@@ -15,14 +17,14 @@ export function RecebidosPage() {
     if (status !== 'pronto') return
     setCarregando(true)
     try {
-      const n = await processarRecebidos(null)
+      const n = await loading.comCarregando('Importando recebidos…', () => processarRecebidos(null))
       setMensagem(n > 0 ? `${n} arquivo(s) importado(s) para a raiz.` : 'Nenhum arquivo recebido pendente.')
     } catch (e) {
       setMensagem(e instanceof Error ? e.message : String(e))
     } finally {
       setCarregando(false)
     }
-  }, [status, processarRecebidos])
+  }, [status, processarRecebidos, loading])
 
   async function desbloquear(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -83,8 +85,8 @@ export function RecebidosPage() {
           onClick={() => void entrar()}
           className="mt-6 inline-flex items-center gap-2 rounded-full bg-brand-600 px-6 py-2 text-sm font-bold text-white disabled:opacity-50"
         >
-          <LogIn className="h-4 w-4" aria-hidden />
-          Entrar com Google
+          {desbloqueando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <LogIn className="h-4 w-4" aria-hidden />}
+          {desbloqueando ? 'Conectando…' : 'Entrar com Google'}
         </button>
       ) : vault.status !== 'pronto' ? (
         <form onSubmit={(event) => void desbloquear(event)} className="mt-6 text-left">
@@ -107,7 +109,7 @@ export function RecebidosPage() {
             disabled={desbloqueando || !senha}
             className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
           >
-            <LockKeyhole className="h-4 w-4" aria-hidden />
+            {desbloqueando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <LockKeyhole className="h-4 w-4" aria-hidden />}
             {desbloqueando ? 'Desbloqueando…' : 'Desbloquear e importar'}
           </button>
         </form>
@@ -115,8 +117,9 @@ export function RecebidosPage() {
         type="button"
         disabled={carregando}
         onClick={() => void processar()}
-        className="mt-6 rounded-full bg-brand-600 px-6 py-2 text-sm font-bold text-white shadow-md shadow-brand-600/30"
+        className="mt-6 inline-flex items-center gap-2 rounded-full bg-brand-600 px-6 py-2 text-sm font-bold text-white shadow-md shadow-brand-600/30 disabled:opacity-60"
       >
+        {carregando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
         {carregando ? 'Importando…' : 'Importar agora'}
       </button>}
       {vault.erro ? <p role="alert" className="mt-4 text-sm text-red-700 dark:text-red-300">{vault.erro}</p> : null}

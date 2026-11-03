@@ -5,6 +5,7 @@ import { App } from '@/presentation/app/App'
 import { ThemeProvider } from '@/presentation/app/providers/themeContext'
 import { AuthProvider } from '@/presentation/app/providers/authProvider'
 import { VaultProvider } from '@/presentation/app/providers/vaultProvider'
+import { LoadingProvider } from '@/presentation/app/providers/loadingProvider'
 import '@/index.css'
 
 createRoot(document.getElementById('root')!).render(
@@ -12,9 +13,11 @@ createRoot(document.getElementById('root')!).render(
     <ThemeProvider>
       <AuthProvider>
         <VaultProvider>
-          <BrowserRouter basename="/mydocs">
-            <App />
-          </BrowserRouter>
+          <LoadingProvider>
+            <BrowserRouter basename="/mydocs">
+              <App />
+            </BrowserRouter>
+          </LoadingProvider>
         </VaultProvider>
       </AuthProvider>
     </ThemeProvider>

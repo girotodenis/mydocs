@@ -2,14 +2,16 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { ArrowLeft, Download, Pencil, Share2, Trash2 } from 'lucide-react'
+import { ArrowLeft, Download, Loader2, Pencil, Share2, Trash2 } from 'lucide-react'
 import type { TipoPreview } from '@/domain/preview'
 import { useVault } from '@/presentation/app/providers/vaultProvider'
+import { useLoading } from '@/presentation/app/providers/loadingProvider'
 
 export function ViewerPage() {
   const { itemId } = useParams<{ itemId: string }>()
   const navigate = useNavigate()
   const vault = useVault()
+  const loading = useLoading()
   const item = useMemo(() => vault.manifesto?.itens.find((i) => i.id === itemId), [vault.manifesto, itemId])
   const [bytes, setBytes] = useState<Uint8Array | null>(null)
   const [url, setUrl] = useState<string | null>(null)
@@ -44,17 +46,19 @@ export function ViewerPage() {
 
   const baixar = () => {
     if (!bytes) return
-    const blob = new Blob([new Uint8Array(bytes)], { type: item.mime })
-    const u = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = u
-    a.download = item.nome
-    a.click()
-    URL.revokeObjectURL(u)
+    void loading.comCarregando(`Baixando ${item.nome}…`, async () => {
+      const blob = new Blob([new Uint8Array(bytes)], { type: item.mime })
+      const u = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = u
+      a.download = item.nome
+      a.click()
+      URL.revokeObjectURL(u)
+    })
   }
 
   const compartilhar = () => {
-    void vault.compartilhar(item)
+    void loading.comCarregando(`Compartilhando ${item.nome}…`, () => vault.compartilhar(item))
   }
 
   const excluir = async () => {
@@ -90,7 +94,10 @@ export function ViewerPage() {
       </div>
 
       {bytes === null ? (
-        <p className="text-slate-500">Carregando…</p>
+        <div className="flex items-center justify-center gap-2 py-16 text-slate-500 dark:text-slate-400">
+          <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+          Carregando…
+        </div>
       ) : tipo === 'imagem' && url ? (
         <img src={url} alt={item.nome} className="mx-auto max-h-[70vh] rounded-xl border border-slate-200 dark:border-slate-800" />
       ) : tipo === 'video' && url ? (
