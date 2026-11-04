@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
 import {
+  CloudUpload,
+  CloudOff,
   ExternalLink,
   FolderLock,
   Inbox,
+  Loader2,
   Lock,
   LogOut,
   Menu,
@@ -13,9 +16,11 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { ConflitoDeSenhaError } from '@/application/conexao'
 import { cn } from '@/presentation/cn'
 import { useTheme } from '@/presentation/app/providers/themeContext'
 import { useVault } from '@/presentation/app/providers/vaultProvider'
+import { SincronizacaoModal } from '@/presentation/components/SincronizacaoModal'
 import { useOnlineStatus } from '@/presentation/hooks/useOnlineStatus'
 
 const navItemClass = 'inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all'
@@ -38,6 +43,13 @@ export function AppLayout() {
   const online = useOnlineStatus()
   const { pathname } = useLocation()
   const [menuAberto, setMenuAberto] = useState(false)
+  const [aviso, setAviso] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!aviso) return
+    const timer = window.setTimeout(() => setAviso(null), 8_000)
+    return () => window.clearTimeout(timer)
+  }, [aviso])
 
   useEffect(() => {
     setMenuAberto(false)
@@ -68,7 +80,18 @@ export function AppLayout() {
     apenasIcone: true,
   })
   if (vault.autenticado) {
-    acoes.push({ key: 'sair', label: 'Sair', icon: LogOut, onClick: vault.logout })
+    acoes.push({ key: 'sair', label: 'Desconectar Google', icon: LogOut, onClick: vault.logout })
+  }
+
+  async function sincronizar() {
+    setMenuAberto(false)
+    try {
+      const r = await vault.sincronizarDrive()
+      setAviso(`Sincronizado — ${r.enviados} enviado(s), ${r.recebidos} recebido(s).`)
+    } catch (e) {
+      if (e instanceof ConflitoDeSenhaError) return // o modal de conflito assume
+      window.alert(e instanceof Error ? e.message : String(e))
+    }
   }
 
   function conteudoAcao(acao: AcaoHeader) {
@@ -100,15 +123,32 @@ export function AppLayout() {
               <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">MyDocs</span>
             </NavLink>
             {vault.pendentes > 0 ? (
-              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+              <span className="hidden shrink-0 items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 sm:inline-flex dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
                 {vault.pendentes} <span className="hidden sm:inline">pendente(s)</span>
               </span>
             ) : null}
-            {vault.status === 'pronto' ? (
-              <span className="hidden shrink-0 items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 sm:inline-flex dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
-                Protegido
+            {vault.sincronizado ? (
+              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+                <CloudUpload className="h-3.5 w-3.5" aria-hidden />
+                <span className="hidden sm:inline">Sincronizado</span>
               </span>
-            ) : null}
+            ) : (
+              <button
+                type="button"
+                onClick={() => void sincronizar()}
+                disabled={vault.sincronizando}
+                aria-label="Sincronizar cofre com o Google Drive"
+                title="Sincronizar cofre com o Google Drive"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-red-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm shadow-red-600/30 transition-colors hover:bg-red-700 disabled:opacity-60"
+              >
+                {vault.sincronizando ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <CloudOff className="h-3.5 w-3.5" aria-hidden />
+                )}
+                {vault.sincronizando ? 'Sincronizando…' : 'Não sincronizado'}
+              </button>
+            )}
           </div>
 
           <nav aria-label="Navegação principal" className="hidden min-w-0 sm:block">
@@ -232,28 +272,27 @@ export function AppLayout() {
         ) : null}
       </header>
 
-      {!online && vault.autenticado ? (
+      {!online && vault.vinculado ? (
         <div className="flex items-center justify-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-sm font-medium text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
           Modo offline — as alterações serão sincronizadas ao reconectar.
         </div>
       ) : null}
 
-      {vault.sessaoExpirada && vault.autenticado && online ? (
-        <div className="flex flex-wrap items-center justify-center gap-3 border-b border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
-          <span>Sessão com o Google expirada.</span>
-          <button
-            type="button"
-            onClick={() => void vault.relogar()}
-            className="rounded-full bg-red-600 px-4 py-1 text-xs font-bold text-white shadow-sm"
-          >
-            Entrar novamente
-          </button>
+      {aviso ? (
+        <div
+          role="status"
+          className="flex items-center justify-center gap-2 border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-center text-sm font-medium text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+        >
+          <CloudUpload className="h-4 w-4 shrink-0" aria-hidden />
+          {aviso}
         </div>
       ) : null}
 
       <main id="conteudo" tabIndex={-1} className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 focus:outline-none sm:py-8">
         <Outlet />
       </main>
+
+      <SincronizacaoModal />
 
       <footer className="border-t border-slate-200/70 bg-white/75 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/75">
         <div className="mx-auto max-w-6xl px-4 py-4 text-center text-sm text-slate-500 sm:text-left dark:text-slate-400">

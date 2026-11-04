@@ -1,6 +1,6 @@
 const DB_NAME = 'mydocs'
-const DB_VERSION = 1
-const STORES = ['cache', 'outbox', 'inbox'] as const
+const DB_VERSION = 2
+const STORES = ['cache', 'outbox', 'inbox', 'chaves'] as const
 
 let dbPromise: Promise<IDBDatabase> | null = null
 

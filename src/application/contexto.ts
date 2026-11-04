@@ -3,8 +3,13 @@ import type { ItemStore, SharePort, ShareTargetPort, VaultRepository } from '@/d
 import type { SessaoCripto } from '@/infrastructure/cripto/chaveSessao'
 
 export interface ContextoVault {
+  /** Identidade local do cofre (estável, usada nas chaves de cache). */
   readonly vaultId: string
+  /** Id do arquivo do manifesto no Drive (vazio enquanto não houver vínculo). */
+  readonly arquivoId: string
   readonly folderId: string
+  /** Indica se o cofre está vinculado a uma pasta/arquivo no Google Drive. */
+  vinculado(): boolean
   tokenProvider(): Promise<string>
   online(): boolean
   itemStore: ItemStore

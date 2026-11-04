@@ -20,17 +20,24 @@ export async function desbloquear(ctx: ContextoVault, senha: string): Promise<bo
   // 1. Desbloqueio offline (verificador local deste dispositivo).
   const params = obterSaltVerificador(ctx.vaultId)
   if (params) {
-    const chave = await derivarChave(senha, params.salt, params.iterations)
-    if (await validarSenhaOffline(ctx.vaultId, senha)) {
-      ctx.definirSessao({ chave, salt: params.salt, iterations: params.iterations })
-      return true
-    }
-    return false
+    if (!(await validarSenhaOffline(ctx.vaultId, senha))) return false
+    ctx.definirSessao({
+      chave: await derivarChave(senha, params.salt, params.iterations),
+      salt: params.salt,
+      iterations: params.iterations,
+    })
+    return true
   }
 
-  // 2. Primeiro desbloqueio neste dispositivo (online): valida contra o manifesto.
+  // 2. Primeiro desbloqueio neste dispositivo: valida contra o manifesto no
+  // Drive (só é possível quando o cofre já está vinculado).
+  if (!ctx.vinculado()) {
+    throw new Error(
+      'Este dispositivo ainda não conhece a senha deste cofre. Sincronize com o Google Drive para validá-la.',
+    )
+  }
   const token = await ctx.tokenProvider()
-  const { bytes } = await drive.baixarArquivoComEtag(token, ctx.vaultId)
+  const { bytes } = await drive.baixarArquivoComEtag(token, ctx.arquivoId)
   const aberto = abrirEnvelope(bytes)
   if (!aberto) throw new Error('Manifesto inválido')
   if (aberto.cabecalho.kdf === 'sessao' || !aberto.cabecalho.iterations) {
@@ -42,8 +49,7 @@ export async function desbloquear(ctx: ContextoVault, senha: string): Promise<bo
 
   const salt = base64ParaBytes(aberto.cabecalho.salt || '')
   const iterations = aberto.cabecalho.iterations || ITERACOES_KDF
-  const chave = await derivarChave(senha, salt, iterations)
-  ctx.definirSessao({ chave, salt, iterations })
+  ctx.definirSessao({ chave: await derivarChave(senha, salt, iterations), salt, iterations })
   await gravarVerificadorComSalt(ctx.vaultId, senha, salt)
   return true
 }

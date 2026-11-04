@@ -1,4 +1,5 @@
 import type { Manifesto } from '@/domain/entities'
+import { gerarId } from '@/domain/itemId'
 import { comprimirGzip, descomprimirGzip } from '@/infrastructure/compression'
 import { cifrarComChaveComSalt, decifrarComChave } from '@/infrastructure/cripto/envelope'
 import { ChaveNecessariaError } from '@/infrastructure/cripto/erros'
@@ -6,35 +7,49 @@ import type { SessaoCripto } from '@/infrastructure/cripto/chaveSessao'
 import { derivarChave, randomBytes } from '@/infrastructure/cripto/webCrypto'
 import { gravarVerificadorComSalt } from '@/infrastructure/cripto/verificadorLocal'
 import { ITERACOES_KDF } from '@/infrastructure/cripto/constantes'
-import { criarArquivoMultipart } from '@/infrastructure/drive/api'
-import { garantirPastaApp } from '@/infrastructure/drive/pasta'
-import { lerManifestoCache } from '@/infrastructure/storage/cache'
+import { lerManifestoCache, salvarManifestoCache } from '@/infrastructure/storage/cache'
 import { enfileirar } from '@/infrastructure/storage/outbox'
 import { manifestoVazio, parseManifesto, serializarManifesto } from '@/infrastructure/vault/manifestoCodec'
 import type { ContextoVault } from './contexto'
 
-export interface NovoCofre {
+export interface CofreLocal {
   vaultId: string
-  folderId: string
   sessao: SessaoCripto
+  manifesto: Manifesto
 }
 
-export async function criarNovoCofre(token: string, senha: string, folderNome: string): Promise<NovoCofre> {
-  const folderId = await garantirPastaApp(token, folderNome)
+/**
+ * Cria o cofre sem nenhuma dependência do Google: a chave é derivada da senha,
+ * o verificador local é gravado e o manifesto vazio vai para o cache (IndexedDB).
+ * O vínculo com o Drive é feito depois, sob demanda.
+ */
+export async function criarCofreLocal(senha: string): Promise<CofreLocal> {
+  const vaultId = gerarId()
   const salt = randomBytes(16)
   const chave = await derivarChave(senha, salt, ITERACOES_KDF)
-
-  const manifesto = manifestoVazio()
-  const claro = serializarManifesto(manifesto)
-  const comprimido = await comprimirGzip(claro)
-  const envelope = await cifrarComChaveComSalt(chave, salt, ITERACOES_KDF, comprimido)
-  const vaultId = await criarArquivoMultipart(token, 'mydocs.manifest', envelope, folderId)
+  const sessao: SessaoCripto = { chave, salt, iterations: ITERACOES_KDF }
 
   await gravarVerificadorComSalt(vaultId, senha, salt)
-  return { vaultId, folderId, sessao: { chave, salt, iterations: ITERACOES_KDF } }
+  const manifesto = manifestoVazio()
+  await salvarManifestoCache(vaultId, await cifrarManifesto(sessao, manifesto))
+
+  return { vaultId, sessao, manifesto }
+}
+
+export async function cifrarManifesto(sessao: SessaoCripto, manifesto: Manifesto): Promise<Uint8Array> {
+  const comprimido = await comprimirGzip(serializarManifesto(manifesto))
+  return cifrarComChaveComSalt(sessao.chave, sessao.salt, sessao.iterations, comprimido)
+}
+
+export async function decifrarManifesto(sessao: SessaoCripto, envelope: Uint8Array): Promise<Manifesto> {
+  const comprimido = await decifrarComChave(sessao.chave, envelope)
+  return parseManifesto(await descomprimirGzip(comprimido))
 }
 
 export async function carregarVault(ctx: ContextoVault): Promise<Manifesto> {
+  if (!ctx.vinculado()) {
+    throw new Error('Este cofre ainda não está sincronizado com o Google Drive.')
+  }
   const manifesto = await ctx.vaultRepository.carregarManifesto()
   ctx.definirManifesto(manifesto)
   return manifesto
@@ -50,21 +65,20 @@ export async function carregarVaultDoCache(ctx: ContextoVault): Promise<Manifest
   if (!sessao) throw new ChaveNecessariaError()
   const envelope = lerManifestoCache(ctx.vaultId)
   if (!envelope) throw new Error('Este cofre ainda não foi baixado neste dispositivo. Conecte-se para abri-lo.')
-  const comprimido = await decifrarComChave(sessao.chave, envelope)
-  const claro = await descomprimirGzip(comprimido)
-  const manifesto = parseManifesto(claro)
+  const manifesto = await decifrarManifesto(sessao, envelope)
   ctx.definirManifesto(manifesto)
   return manifesto
 }
 
 export async function persistirManifesto(ctx: ContextoVault, manifesto: Manifesto): Promise<void> {
   ctx.definirManifesto(manifesto)
-  if (ctx.online()) {
+  if (ctx.online() && ctx.vinculado()) {
     await ctx.vaultRepository.salvarManifesto(manifesto)
     return
   }
-  // Offline: persiste no cache para sobreviver a reloads e enfileira a
-  // gravação no Drive para sincronizar ao reconectar.
+  // Offline (ou ainda sem vínculo com o Drive): persiste no cache para
+  // sobreviver a reloads. Só entra na fila de sincronização quando o cofre já
+  // está vinculado — o vínculo inicial envia tudo o que existe localmente.
   await ctx.vaultRepository.salvarManifestoLocal(manifesto)
-  await enfileirar({ tipo: 'salvarManifesto' })
+  if (ctx.vinculado()) await enfileirar({ tipo: 'salvarManifesto' })
 }

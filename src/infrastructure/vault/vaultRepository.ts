@@ -10,6 +10,9 @@ import { parseManifesto, serializarManifesto } from './manifestoCodec'
 
 export interface DepsVaultRepository {
   tokenProvider: () => Promise<string>
+  /** Identidade local do cofre: chave do cache (não muda ao vincular o Drive). */
+  vaultId: string
+  /** Id do arquivo do manifesto no Google Drive. */
   vaultFileId: string
   obterSessao: () => SessaoCripto | undefined
   obterEtag: () => string | undefined
@@ -30,7 +33,7 @@ export function criarDriveVaultRepository(deps: DepsVaultRepository): VaultRepos
       const token = await deps.tokenProvider()
       const { bytes, etag } = await drive.baixarArquivoComEtag(token, deps.vaultFileId)
       deps.definirEtag(etag)
-      await salvarManifestoCache(deps.vaultFileId, bytes)
+      await salvarManifestoCache(deps.vaultId, bytes)
       const sessao = deps.obterSessao()
       if (!sessao) throw new ChaveNecessariaError()
       const comprimido = await decifrarComChave(sessao.chave, bytes)
@@ -42,11 +45,11 @@ export function criarDriveVaultRepository(deps: DepsVaultRepository): VaultRepos
       const envelope = await cifrarManifesto(manifesto)
       const { etag } = await drive.atualizarArquivo(token, deps.vaultFileId, envelope, deps.obterEtag())
       deps.definirEtag(etag)
-      await salvarManifestoCache(deps.vaultFileId, envelope)
+      await salvarManifestoCache(deps.vaultId, envelope)
     },
     async salvarManifestoLocal(manifesto) {
       const envelope = await cifrarManifesto(manifesto)
-      await salvarManifestoCache(deps.vaultFileId, envelope)
+      await salvarManifestoCache(deps.vaultId, envelope)
     },
   }
 }

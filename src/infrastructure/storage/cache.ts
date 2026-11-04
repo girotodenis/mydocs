@@ -36,3 +36,17 @@ export function lerItemCache(vaultId: string, itemId: string): Uint8Array | unde
 export async function removerItemCache(vaultId: string, itemId: string): Promise<void> {
   await remover(STORE, chaveItem(vaultId, itemId))
 }
+
+export async function removerManifestoCache(vaultId: string): Promise<void> {
+  await remover(STORE, chaveManifesto(vaultId))
+}
+
+/**
+ * Apaga do cache local o manifesto e todos os itens conhecidos do cofre.
+ */
+export async function limparCofreCache(vaultId: string, itemIds: string[]): Promise<void> {
+  await removerManifestoCache(vaultId)
+  for (const itemId of itemIds) {
+    await removerItemCache(vaultId, itemId)
+  }
+}

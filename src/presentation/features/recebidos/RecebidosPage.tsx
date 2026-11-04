@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { Inbox, Loader2, LockKeyhole, LogIn } from 'lucide-react'
+import { Inbox, Loader2, LockKeyhole } from 'lucide-react'
 import { useVault } from '@/presentation/app/providers/vaultProvider'
 
 export function RecebidosPage() {
@@ -56,23 +56,6 @@ export function RecebidosPage() {
     }
   }
 
-  async function entrar() {
-    setDesbloqueando(true)
-    setMensagem('')
-    setLog([])
-    registrar('Conectando ao Google…')
-    try {
-      await vault.login()
-      registrar('Login concluído.')
-    } catch (erro) {
-      const msg = erro instanceof Error ? erro.message : String(erro)
-      registrar(`Erro ao entrar: ${msg}`)
-      setMensagem(msg)
-    } finally {
-      setDesbloqueando(false)
-    }
-  }
-
   useEffect(() => {
     if (vault.status !== 'pronto') {
       importouRef.current = false
@@ -93,19 +76,7 @@ export function RecebidosPage() {
       <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
         Arquivos, textos e links compartilhados são importados automaticamente para a raiz do cofre.
       </p>
-      {!vault.configurado ? (
-        <p className="mt-6 text-sm text-slate-600 dark:text-slate-300">O acesso ao Google Drive ainda não está configurado.</p>
-      ) : !vault.autenticado ? (
-        <button
-          type="button"
-          disabled={desbloqueando}
-          onClick={() => void entrar()}
-          className="mt-6 inline-flex items-center gap-2 rounded-full bg-brand-600 px-6 py-2 text-sm font-bold text-white disabled:opacity-50"
-        >
-          {desbloqueando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <LogIn className="h-4 w-4" aria-hidden />}
-          {desbloqueando ? 'Conectando…' : 'Entrar com Google'}
-        </button>
-      ) : vault.status !== 'pronto' ? (
+      {vault.status !== 'pronto' ? (
         <form onSubmit={(event) => void desbloquear(event)} className="mt-6 text-left">
           <p className="mb-4 text-sm text-slate-600 dark:text-slate-300">
             Desbloqueie o cofre para importar o conteúdo compartilhado. Ele permanece pendente até o desbloqueio.
@@ -142,20 +113,16 @@ export function RecebidosPage() {
       </button>}
       {vault.erro ? <p role="alert" className="mt-4 text-sm text-red-700 dark:text-red-300">{vault.erro}</p> : null}
       {mensagem ? <p role="status" className="mt-4 text-sm text-slate-600 dark:text-slate-300">{mensagem}</p> : null}
-      {vault.autenticado ? (
+      {log.length > 0 ? (
         <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-3 text-left dark:border-slate-800 dark:bg-slate-900">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
             Log de depuração
           </p>
-          {log.length === 0 ? (
-            <p className="text-xs text-slate-400">Nenhuma atividade ainda.</p>
-          ) : (
-            <ul className="max-h-64 space-y-1 overflow-auto font-mono text-xs text-slate-700 dark:text-slate-300">
-              {log.map((linha, i) => (
-                <li key={i} className="break-words">{linha}</li>
-              ))}
-            </ul>
-          )}
+          <ul className="max-h-64 space-y-1 overflow-auto font-mono text-xs text-slate-700 dark:text-slate-300">
+            {log.map((linha, i) => (
+              <li key={i} className="break-words">{linha}</li>
+            ))}
+          </ul>
         </div>
       ) : null}
     </div>

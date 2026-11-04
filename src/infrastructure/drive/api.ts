@@ -134,6 +134,15 @@ export async function atualizarArquivo(
   return { etag: data.etag }
 }
 
+export async function renomearArquivo(token: string, fileId: string, nome: string): Promise<void> {
+  const res = await fetchComTimeout(`${BASE}/files/${fileId}`, {
+    method: 'PATCH',
+    headers: { ...auth(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: nome }),
+  })
+  if (!res.ok) throw erroDaResposta(res, 'renomear')
+}
+
 export async function excluirArquivo(token: string, fileId: string): Promise<void> {
   const res = await fetchComTimeout(`${BASE}/files/${fileId}`, {
     method: 'DELETE',

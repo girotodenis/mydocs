@@ -145,6 +145,12 @@ flowchart LR
 - `application/sync.ts` — sincronização da fila offline (FIFO), reconexão e
   `contarPendencias()`; o flush reaplica no manifesto (1 leitura + 1 escrita) e
   a fila só é limpa após gravar.
+- `application/conexao.ts` — vincula o cofre local ao Google Drive **sem pedir a
+  senha de novo** (usa a chave de sessão): cria o manifesto quando a pasta está
+  vazia, ou baixa o mais recente, mescla com o local (`domain/fusao.ts`), envia
+  os blobs que faltam e atualiza o manifesto. Também concentra a escolha do
+  manifesto correto (a pasta pode ter mais de um) e a adoção do cofre do Drive
+  quando a senha informada é a dele.
 
 ---
 
@@ -153,7 +159,8 @@ flowchart LR
 - `cripto/*` — primitivas e envelopes com Web Crypto:
   - `webCrypto.ts` — PBKDF2-HMAC-SHA256 + AES-256-GCM nativos.
   - `envelope.ts` — cifrar/decifrar um blob (arquivo ou manifesto).
-  - `chaveSessao.ts` — chave derivada **só em memória** (nada em storage).
+  - `chaveSessao.ts` — chave derivada em memória **e** no IndexedDB (store
+    `chaves`, chave AES **não-exportável**), para reabrir o cofre sem a senha.
   - `verificadorLocal.ts` — desbloqueio offline (bloco fixo cifrado + parâmetros
     do KDF gravados no IndexedDB).
 - `drive/*` — Google Drive via `drive.file`: `api.ts`, `pasta.ts`.
@@ -161,8 +168,9 @@ flowchart LR
 - `compression.ts` — gzip nativo (`CompressionStream`) **antes** da cifra.
 - `share/*` — Web Share API (saída) e Web Share Target (entrada via service
   worker); `SharePort` e `ShareTargetPort` definidos no domínio.
-- `storage/db.ts` + `kvStore.ts` — IndexedDB (stores `cache`, `outbox` e
-  `inbox` de Recebidos) com espelho em memória para leitura síncrona.
+- `storage/db.ts` + `kvStore.ts` — IndexedDB (stores `cache`, `outbox`,
+  `inbox` de Recebidos e `chaves` de sessão) com espelho em memória para
+  leitura síncrona.
 - `storage/cache.ts` — cache local dos **envelopes cifrados** (nunca conteúdo
   em claro).
 - `storage/outbox.ts` — fila persistente de mutações offline.
@@ -202,8 +210,34 @@ flowchart LR
   otimista no cache e enfileira no outbox.
 - **Sincronização**: `application/sync.ts` reaplica a fila em FIFO, renova o
   token em 401, interrompe em falha de rede/quota (mantendo o item) e refresca
-  o cache. Disparada por `useSync` (mount, reconexão, retry 60s).
+  o cache. Disparada pelo `VaultProvider` (mount, reconexão) e pelo botão
+  "Não sincronizado".
 - **Auth offline**: o `AuthProvider` não desloga por falta de rede.
+
+### 8.1 Fluxo local-first e sincronização opcional
+
+O app **não exige conta Google para começar**. Na primeira abertura o usuário só
+escolhe a senha do cofre: a chave é derivada (PBKDF2), o verificador local é
+gravado e um manifesto vazio vai para o IndexedDB — tudo local. As operações
+(notas, uploads, pastas) funcionam nesse modo, com o `ItemStore` local.
+
+O header mostra um botão vermelho **"Não sincronizado"** enquanto o cofre não
+está vinculado (ou está pendente, ou o token expirou). Ao tocar:
+
+1. `AuthProvider.garantirToken()` faz o login (ou renova o token) do Google.
+2. `application/conexao.ts` garante a pasta do app e localiza o manifesto:
+   - **não existe** → cria `mydocs.manifest` e envia todos os blobs locais;
+   - **existe** → baixa o mais recente, mescla com o local (item mais recente
+     vence) e atualiza manifesto + blobs que faltam.
+3. Nada de senha: a chave de sessão (persistida, não-exportável) já cifra tudo.
+
+Se a pasta já tem um cofre **cifrado com outra senha**, o app abre um modal com
+duas opções: (a) entrar com a senha correta daquele cofre (o cofre local deixa
+de ser sincronizado) ou (b) criar um cofre novo, **renomeando** a pasta antiga
+(`mydocs_vault_<timestamp>`) para guardá-la como backup — nada é apagado.
+
+"Desconectar Google" remove apenas o token: o cofre continua aberto e utilizável
+localmente, e o botão vermelho volta a aparecer.
 - **Persistência**: `db.ts`/`kvStore.ts` usam IndexedDB com espelho em memória.
 
 ---
@@ -225,8 +259,11 @@ envelope segue o mesmo padrão do app de carteira:
 - **AAD**: os bytes do cabeçalho em claro são o dado autenticado — adulterar
   salt/iterações/IV invalida a tag.
 - **Detecção de estado**: só pelo magic do envelope (nunca por "não é gzip").
-- **Chave só em memória**: `cripto/chaveSessao.ts`; reload, logout, troca de
-  cofre e "Bloquear agora" pedem a senha de novo.
+- **Chave guardada no dispositivo**: `cripto/chaveSessao.ts` mantém a chave em
+  memória e no IndexedDB como `CryptoKey` **não-exportável** — o material da
+  senha nunca é gravado. Recarregar a página reabre o cofre sem senha; **"Bloquear"**
+  apaga a chave e volta a exigi-la. Quem tem acesso ao dispositivo desbloqueado
+  tem acesso ao cofre (trade-off aceito para uso sem Google).
 - **Desbloqueio offline**: `verificadorLocal.ts` grava um bloco fixo cifrado +
   parâmetros do KDF; sem rede o app deriva a chave e valida a tag. A senha e a
   chave **nunca** são gravadas.
@@ -309,4 +346,5 @@ A interface segue o **mesmo padrão visual do app de carteira**:
   `domain`/`application`.
 - Persistência local: dados (cache/outbox) no **IndexedDB**; token/workspace no
   **localStorage**. Nada em claro no IndexedDB (RNF03).
-- A senha/chave nunca é persistida; apenas o verificador de desbloqueio offline.
+- A senha nunca é persistida: ficam apenas o verificador de desbloqueio offline
+  e a chave AES não-exportável da sessão (apagada por "Bloquear").

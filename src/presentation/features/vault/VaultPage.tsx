@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowUp,
+  CloudOff,
   Download,
   Eye,
   FilePlus,
@@ -12,7 +13,6 @@ import {
   Image,
   Loader2,
   Lock,
-  LogIn,
   Pencil,
   Share2,
   Trash2,
@@ -160,44 +160,17 @@ export function VaultPage() {
     })
   }
 
-  if (!vault.configurado) {
-    return (
-      <div className="mx-auto max-w-lg text-center">
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Configuração necessária</h1>
-        <p className="mt-3 text-slate-600 dark:text-slate-400">
-          Copie <code>.env.example</code> para <code>.env</code> e preencha <code>VITE_GOOGLE_CLIENT_ID</code>.
-        </p>
-      </div>
-    )
-  }
-
-  if (!vault.autenticado) {
-    return (
-      <div className="mx-auto max-w-md text-center">
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Bem-vindo ao MyDocs</h1>
-        <p className="mt-3 text-slate-600 dark:text-slate-400">Entre com sua conta Google para acessar o cofre.</p>
-        <button
-          type="button"
-          disabled={carregando}
-          onClick={() => void comCarregando('Conectando ao Google…', vault.login)}
-          className="mt-6 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-brand-500 to-brand-700 px-6 py-2 text-sm font-bold text-white shadow-md shadow-brand-600/40 disabled:opacity-60"
-        >
-          {carregando ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <LogIn className="h-4 w-4" aria-hidden />}
-          {carregando ? 'Conectando…' : 'Entrar com Google'}
-        </button>
-      </div>
-    )
-  }
-
   if (vault.status === 'sem-cofre' || vault.status === 'bloqueado') {
     return (
       <div className="mx-auto max-w-md">
         <h1 className="text-center text-2xl font-bold text-slate-900 dark:text-slate-100">
           <Lock className="mr-2 inline h-5 w-5" aria-hidden />
-          Cofre
+          {vault.cofreExiste ? 'Cofre bloqueado' : 'Criar seu cofre'}
         </h1>
         <p className="mt-1 text-center text-xs text-slate-500 dark:text-slate-400">
-          Digite sua senha para entrar. Se o cofre ainda não existir, ele será criado agora.
+          {vault.cofreExiste
+            ? 'Digite a senha do cofre para entrar. Ela fica só neste dispositivo — não é sua conta Google.'
+            : 'Escolha uma senha para proteger seus arquivos. Nenhuma conta Google é necessária; a sincronização com o Drive é opcional.'}
         </p>
         <form onSubmit={(event) => void entrarNoCofre(event)} className="mt-4">
           <input
@@ -248,6 +221,15 @@ export function VaultPage() {
         void enviarArquivos(e.dataTransfer.files)
       }}
     >
+      {!vault.vinculado ? (
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+          <CloudOff className="h-4 w-4 shrink-0" aria-hidden />
+          <span className="min-w-0 flex-1">
+            Este cofre está só neste dispositivo. Toque em <strong>“Não sincronizado”</strong> para enviá-lo ao Google
+            Drive.
+          </span>
+        </div>
+      ) : null}
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1 text-sm text-slate-600 sm:pb-0 dark:text-slate-300">
           <button

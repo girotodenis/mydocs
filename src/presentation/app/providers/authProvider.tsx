@@ -116,8 +116,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [email, setEmail] = useState<string | null>(() => localStorage.getItem(USER_KEY))
   const tokenRef = useRef<string | null>(token)
   tokenRef.current = token
+  const requisicaoTokenRef = useRef<Promise<string> | null>(null)
 
   const gravarToken = useCallback((accessToken: string) => {
+    tokenRef.current = accessToken
     localStorage.setItem(TOKEN_KEY, accessToken)
     const userEmail = extrairEmail(accessToken)
     localStorage.setItem(USER_KEY, userEmail)
@@ -132,6 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [gravarToken])
 
   const logout = useCallback(() => {
+    tokenRef.current = null
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(USER_KEY)
     setToken(null)
@@ -148,15 +151,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
    * Retorna um token válido. Se o token atual expirou (ou não existe), pede um
    * novo ao Google — o prompt só aparece quando o consentimento precisar ser
    * renovado; caso contrário, a renovação é silenciosa.
+   *
+   * Chamadas concorrentes reaproveitam a mesma requisição para não abrir dois
+   * popups de login.
    */
   const garantirToken = useCallback(async () => {
     const t = tokenRef.current
     if (t && !tokenExpirado(t)) return t
     if (!CLIENT_ID) throw new Error('VITE_GOOGLE_CLIENT_ID não configurado')
-    const google = await carregarGis()
-    const accessToken = await solicitarTokenNovo(google)
-    gravarToken(accessToken)
-    return accessToken
+    if (!requisicaoTokenRef.current) {
+      requisicaoTokenRef.current = (async () => {
+        const google = await carregarGis()
+        const accessToken = await solicitarTokenNovo(google)
+        gravarToken(accessToken)
+        return accessToken
+      })().finally(() => {
+        requisicaoTokenRef.current = null
+      })
+    }
+    return requisicaoTokenRef.current
   }, [gravarToken])
 
   return (
