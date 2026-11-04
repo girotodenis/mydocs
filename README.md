@@ -24,9 +24,11 @@ compartilhamento nativo no celular.
    login Google (ou renova o token), cria o cofre no Drive se ainda não existir
    ou atualiza o existente — enviando o que está local e trazendo o que está no
    Drive, **sem pedir a senha do cofre outra vez**.
-3. **Se já houver um cofre no Drive com outra senha**, o app avisa e oferece:
-   entrar com a senha correta daquele cofre, ou criar um cofre novo — nesse caso
-   a pasta antiga é apenas renomeada e preservada como backup, nada é apagado.
+3. **Se já houver um cofre no Drive com outra chave** (mesmo com a mesma senha,
+   cada cofre tem seu próprio salt), o app avisa e oferece: informar a senha
+   daquele cofre para **abrir e juntar tudo** — os arquivos deste dispositivo são
+   recifrados e enviados, nada é perdido — ou criar um cofre novo, renomeando a
+   pasta antiga e preservando-a como backup.
 4. **Desconectar Google** remove só o acesso ao Drive; o cofre continua aberto e
    utilizável localmente.
 

@@ -231,10 +231,20 @@ está vinculado (ou está pendente, ou o token expirou). Ao tocar:
      vence) e atualiza manifesto + blobs que faltam.
 3. Nada de senha: a chave de sessão (persistida, não-exportável) já cifra tudo.
 
-Se a pasta já tem um cofre **cifrado com outra senha**, o app abre um modal com
-duas opções: (a) entrar com a senha correta daquele cofre (o cofre local deixa
-de ser sincronizado) ou (b) criar um cofre novo, **renomeando** a pasta antiga
-(`mydocs_vault_<timestamp>`) para guardá-la como backup — nada é apagado.
+Se a pasta já tem um cofre **cifrado com outra chave** — o que acontece mesmo
+com a mesma senha, pois cada cofre tem salt próprio — o app abre um modal com
+duas opções:
+
+- **(a) abrir o cofre do Drive e juntar tudo** (`mesclarCofreLocalNoDrive`): o
+  manifesto do Drive é aberto com a senha informada e os itens deste dispositivo
+  são decifrados com a chave local, **recifrados com a chave do Drive** e
+  enviados; o manifesto publicado é a união dos dois. Nada é perdido.
+- **(b) criar um cofre novo**, **renomeando** a pasta antiga
+  (`mydocs_vault_<timestamp>`) para guardá-la como backup — nada é apagado.
+
+Tokens do Google Identity Services são opacos: a expiração é guardada a partir de
+`expires_in` e, se o Drive responder 401, o token é renovado e a operação é
+repetida automaticamente (`comToken` no `VaultProvider`).
 
 "Desconectar Google" remove apenas o token: o cofre continua aberto e utilizável
 localmente, e o botão vermelho volta a aparecer.
