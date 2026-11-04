@@ -3,11 +3,7 @@ import type { Item, Manifesto, PastaId } from '@/domain/entities'
 import type { TipoNota } from '@/domain/editor'
 import type { TipoPreview } from '@/domain/preview'
 import type { ContextoVault } from '@/application/contexto'
-import {
-  adotarCofreDoDrive,
-  conectarCofreAoServidor,
-  ConflitoDeSenhaError,
-} from '@/application/conexao'
+import { conectarCofreAoServidor, ConflitoDeSenhaError, mesclarCofreLocalNoDrive } from '@/application/conexao'
 import * as aplicacaoCripto from '@/application/criptografia'
 import * as aplicacaoEditor from '@/application/editor'
 import * as aplicacaoItens from '@/application/itens'
@@ -78,6 +74,8 @@ interface VaultContextValue {
   sincronizado: boolean
   sincronizando: boolean
   conflito: ConflitoSync | null
+  aviso: string | null
+  limparAviso(): void
   erro: string | null
   pendentes: number
   cofreExiste: boolean
@@ -142,6 +140,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [vinculado, setVinculado] = useState(false)
   const [sincronizando, setSincronizando] = useState(false)
   const [conflito, setConflito] = useState<ConflitoSync | null>(null)
+  const [aviso, setAviso] = useState<string | null>(null)
   const [workspace, setWorkspace] = useState<Workspace>({ vaultId: '', folderId: '', arquivoId: '' })
 
   const vaultIdRef = useRef('')
@@ -415,10 +414,48 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     setConflito(null)
   }, [auth])
 
+  /**
+   * Executa a operação e, se o Drive responder 401 (token revogado/expirado),
+   * renova o token e tenta mais uma vez.
+   */
+  const comToken = useCallback(
+    async <T,>(op: () => Promise<T>): Promise<T> => {
+      try {
+        return await op()
+      } catch (e) {
+        if (e instanceof TokenExpiradoError) {
+          await auth.renovarToken()
+          return await op()
+        }
+        throw e
+      }
+    },
+    [auth],
+  )
+
+  /**
+   * Encapsula operações que podem falhar por token expirado (HTTP 401): tenta
+   * renovar e, se não der, marca a sessão como expirada com mensagem amigável.
+   */
+  const comAuth = useCallback(
+    async <T,>(op: () => Promise<T>): Promise<T> => {
+      try {
+        return await comToken(op)
+      } catch (e) {
+        if (e instanceof TokenExpiradoError) {
+          setSessaoExpirada(true)
+          throw new Error('Sessão com o Google expirada. Toque em "Não sincronizado" para reconectar.')
+        }
+        throw e
+      }
+    },
+    [comToken],
+  )
+
   const sincronizar = useCallback(async () => {
     if (!ctx.vinculado()) return 0
     try {
-      const n = await aplicacaoSync.sincronizar(ctx)
+      const n = await comToken(() => aplicacaoSync.sincronizar(ctx))
       setPendentes(contarPendencias())
       setSessaoExpirada(false)
       return n
@@ -429,7 +466,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       }
       throw e
     }
-  }, [ctx])
+  }, [ctx, comToken])
 
   /** Fluxo do botão vermelho: login/token + criar ou atualizar o cofre no Drive. */
   const sincronizarDrive = useCallback(async () => {
@@ -453,7 +490,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      const resultado = await conectarCofreAoServidor(ctx, FOLDER_NAME)
+      const resultado = await comToken(() => conectarCofreAoServidor(ctx, FOLDER_NAME))
       aplicarWorkspace({
         vaultId: vaultIdRef.current,
         folderId: resultado.folderId,
@@ -462,6 +499,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       ctx.definirManifesto(resultado.manifesto)
       setConflito(null)
       setPendentes(contarPendencias())
+      setAviso(`Sincronizado — ${enviados + resultado.enviados} enviado(s), ${resultado.recebidos} recebido(s).`)
       return { enviados: enviados + resultado.enviados, recebidos: resultado.recebidos }
     } catch (e) {
       if (e instanceof ConflitoDeSenhaError) {
@@ -473,27 +511,33 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     } finally {
       setSincronizando(false)
     }
-  }, [auth, ctx, aplicarWorkspace])
+  }, [auth, ctx, aplicarWorkspace, comToken])
 
-  /** Opção 1 do conflito: abrir o cofre do Drive com a senha correta. */
+  /**
+   * Opção 1 do conflito: abrir o cofre do Drive com a senha correta e juntar o
+   * conteúdo que estava só neste dispositivo (nada é perdido).
+   */
   const usarCofreDoDrive = useCallback(
     async (senha: string) => {
       const atual = conflitoRef.current
       if (!atual) throw new Error('Nenhum cofre em conflito para abrir.')
       setSincronizando(true)
       try {
-        const adotado = await adotarCofreDoDrive(ctx, atual.folderId, senha)
+        const resultado = await comToken(() => mesclarCofreLocalNoDrive(ctx, atual.folderId, senha))
         aplicarWorkspace({
           vaultId: vaultIdRef.current,
           folderId: atual.folderId,
-          arquivoId: adotado.arquivoId,
+          arquivoId: resultado.arquivoId,
         })
-        ctx.definirManifesto(adotado.manifesto)
+        ctx.definirManifesto(resultado.manifesto)
         await limparFila()
         setPendentes(contarPendencias())
         setConflito(null)
         setSessaoExpirada(false)
         setErro(null)
+        setAviso(
+          `Cofres unidos — ${resultado.enviados} arquivo(s) deste dispositivo enviado(s), ${resultado.recebidos} trazido(s) do Drive.`,
+        )
       } catch (e) {
         setErro(mensagem(e))
         throw e
@@ -501,7 +545,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
         setSincronizando(false)
       }
     },
-    [ctx, aplicarWorkspace],
+    [ctx, aplicarWorkspace, comToken],
   )
 
   /** Opção 2 do conflito: guardar o cofre antigo (renomeando a pasta) e criar outro. */
@@ -511,7 +555,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       const token = await auth.garantirToken()
       const sufixo = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
       await arquivarPastaApp(token, FOLDER_NAME, sufixo)
-      const resultado = await conectarCofreAoServidor(ctx, FOLDER_NAME)
+      const resultado = await comToken(() => conectarCofreAoServidor(ctx, FOLDER_NAME))
       aplicarWorkspace({
         vaultId: vaultIdRef.current,
         folderId: resultado.folderId,
@@ -522,6 +566,7 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       setSessaoExpirada(false)
       setErro(null)
       setPendentes(contarPendencias())
+      setAviso(`Cofre novo no Drive — ${resultado.enviados} arquivo(s) enviado(s). O cofre antigo foi preservado.`)
       return { enviados: resultado.enviados, recebidos: resultado.recebidos }
     } catch (e) {
       setErro(mensagem(e))
@@ -529,25 +574,10 @@ export function VaultProvider({ children }: { children: ReactNode }) {
     } finally {
       setSincronizando(false)
     }
-  }, [auth, ctx, aplicarWorkspace])
+  }, [auth, ctx, aplicarWorkspace, comToken])
 
   const limparConflito = useCallback(() => setConflito(null), [])
-
-  /**
-   * Encapsula operações que podem falhar por token expirado (HTTP 401): nesse
-   * caso marca a sessão como expirada e devolve uma mensagem amigável.
-   */
-  const comAuth = useCallback(async <T,>(op: () => Promise<T>): Promise<T> => {
-    try {
-      return await op()
-    } catch (e) {
-      if (e instanceof TokenExpiradoError) {
-        setSessaoExpirada(true)
-        throw new Error('Sessão com o Google expirada. Toque em "Não sincronizado" para reconectar.')
-      }
-      throw e
-    }
-  }, [])
+  const limparAviso = useCallback(() => setAviso(null), [])
 
   const criarPasta = useCallback(
     async (nome: string, parentId: PastaId | null) => {
@@ -661,6 +691,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       sincronizado,
       sincronizando,
       conflito,
+      aviso,
+      limparAviso,
       erro,
       pendentes,
       cofreExiste,
@@ -701,6 +733,8 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       sincronizado,
       sincronizando,
       conflito,
+      aviso,
+      limparAviso,
       erro,
       pendentes,
       cofreExiste,

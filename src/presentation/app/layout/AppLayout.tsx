@@ -43,13 +43,14 @@ export function AppLayout() {
   const online = useOnlineStatus()
   const { pathname } = useLocation()
   const [menuAberto, setMenuAberto] = useState(false)
-  const [aviso, setAviso] = useState<string | null>(null)
+  const aviso = vault.aviso
+  const limparAviso = vault.limparAviso
 
   useEffect(() => {
     if (!aviso) return
-    const timer = window.setTimeout(() => setAviso(null), 8_000)
+    const timer = window.setTimeout(() => limparAviso(), 8_000)
     return () => window.clearTimeout(timer)
-  }, [aviso])
+  }, [aviso, limparAviso])
 
   useEffect(() => {
     setMenuAberto(false)
@@ -86,8 +87,7 @@ export function AppLayout() {
   async function sincronizar() {
     setMenuAberto(false)
     try {
-      const r = await vault.sincronizarDrive()
-      setAviso(`Sincronizado — ${r.enviados} enviado(s), ${r.recebidos} recebido(s).`)
+      await vault.sincronizarDrive()
     } catch (e) {
       if (e instanceof ConflitoDeSenhaError) return // o modal de conflito assume
       window.alert(e instanceof Error ? e.message : String(e))

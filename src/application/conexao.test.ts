@@ -1,17 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Item, Manifesto } from '@/domain/entities'
 import type { ContextoVault } from './contexto'
-import { adotarCofreDoDrive, conectarCofreAoServidor, ConflitoDeSenhaError } from './conexao'
+import { conectarCofreAoServidor, ConflitoDeSenhaError, mesclarCofreLocalNoDrive } from './conexao'
 import { cifrarManifesto } from './vault'
+import { comprimirGzip } from '@/infrastructure/compression'
+import { cifrarComChave, decifrarComChave } from '@/infrastructure/cripto/envelope'
 import { derivarChave, randomBytes } from '@/infrastructure/cripto/webCrypto'
 import type { SessaoCripto } from '@/infrastructure/cripto/chaveSessao'
 import * as drive from '@/infrastructure/drive/api'
-import { lerItemCache, salvarManifestoCache } from '@/infrastructure/storage/cache'
+import { lerItemCache, salvarItemCache, salvarManifestoCache } from '@/infrastructure/storage/cache'
 
 vi.mock('@/infrastructure/drive/pasta', () => ({ garantirPastaApp: vi.fn(async () => 'pasta-1') }))
 vi.mock('@/infrastructure/cripto/verificadorLocal', () => ({ gravarVerificadorComSalt: vi.fn() }))
 vi.mock('@/infrastructure/storage/cache', () => ({
   lerItemCache: vi.fn(),
+  salvarItemCache: vi.fn(),
   salvarManifestoCache: vi.fn(),
 }))
 vi.mock('@/infrastructure/drive/api', () => ({
@@ -75,6 +78,7 @@ beforeEach(() => {
   vi.mocked(drive.criarArquivoMultipart).mockReset()
   vi.mocked(drive.atualizarArquivo).mockReset()
   vi.mocked(lerItemCache).mockReset()
+  vi.mocked(salvarItemCache).mockReset()
   vi.mocked(salvarManifestoCache).mockReset()
 })
 
@@ -153,33 +157,52 @@ describe('conectarCofreAoServidor', () => {
   })
 })
 
-describe('adotarCofreDoDrive', () => {
-  it('abre o cofre do Drive com a senha correta', async () => {
-    const senha = 'senha-do-drive'
-    const encriptado = await cifrarManifesto(await sessaoDe(senha), manifesto([item('do-drive')]))
+describe('mesclarCofreLocalNoDrive', () => {
+  it('junta o conteúdo local no cofre do Drive sem perder nada', async () => {
+    const senha = '325206'
+    // Mesma senha, salts diferentes: as chaves não são iguais (caso real do usuário).
+    const sessaoLocal = await sessaoDe(senha)
+    const sessaoDrive = await sessaoDe(senha)
+    const manifestoDrive = await cifrarManifesto(
+      sessaoDrive,
+      manifesto([{ ...item('drive'), blobId: 'blob-drive' }]),
+    )
+    const comprimido = await comprimirGzip(new TextEncoder().encode('nota offline'))
+    const envelopeLocal = await cifrarComChave(sessaoLocal.chave, comprimido)
+
     vi.mocked(drive.listarArquivos).mockResolvedValue([
-      { id: 'outro', name: 'mydocs.manifest', mimeType: 'x', modifiedTime: '2024-03-01T00:00:00.000Z' },
-      { id: 'alvo', name: 'mydocs.manifest', mimeType: 'x', modifiedTime: '2024-02-01T00:00:00.000Z' },
+      { id: 'drv', name: 'mydocs.manifest', mimeType: 'x', modifiedTime: '2024-02-01T00:00:00.000Z' },
     ])
     vi.mocked(drive.baixarArquivoComEtag).mockImplementation(async (_t, fileId) => {
-      if (fileId === 'alvo') return { bytes: encriptado, etag: '"alvo"' }
-      throw new Error('outro cofre')
+      if (fileId !== 'drv') throw new Error('não deveria baixar outro')
+      return { bytes: manifestoDrive, etag: '"drv"' }
     })
+    vi.mocked(drive.criarArquivoMultipart).mockResolvedValue('blob-local')
+    vi.mocked(drive.atualizarArquivo).mockResolvedValue({ etag: '"novo"' })
+    vi.mocked(lerItemCache).mockReturnValue(envelopeLocal)
 
-    const ctx = contexto(await sessaoDe('outra'), manifesto([]))
-    const resultado = await adotarCofreDoDrive(ctx, 'pasta-1', senha)
+    const ctx = contexto(sessaoLocal, manifesto([item('local')]))
+    const resultado = await mesclarCofreLocalNoDrive(ctx, 'pasta-1', senha)
 
-    expect(resultado.arquivoId).toBe('alvo')
-    expect(resultado.manifesto.itens.map((i) => i.id)).toEqual(['do-drive'])
-    expect(ctx.definirSessao).toHaveBeenCalled()
+    expect(resultado.manifesto.itens.map((i) => i.id)).toEqual(['local', 'drive'])
+    expect(resultado.enviados).toBe(1)
+    expect(resultado.recebidos).toBe(1)
+    expect(resultado.arquivoId).toBe('drv')
+
+    // O blob local foi recifrado com a chave do cofre do Drive antes de subir.
+    const envelopeEnviado = vi.mocked(drive.criarArquivoMultipart).mock.calls[0][2]
+    const sessaoAdotada = vi.mocked(ctx.definirSessao).mock.calls[0][0] as SessaoCripto
+    expect(await decifrarComChave(sessaoAdotada.chave, envelopeEnviado)).toEqual(comprimido)
+    expect(salvarItemCache).toHaveBeenCalledWith('cofre-local', 'local', envelopeEnviado)
+    expect(drive.atualizarArquivo).toHaveBeenCalledWith('token', 'drv', expect.any(Uint8Array), '"drv"')
   })
 
   it('recusa senha incorreta', async () => {
-    const encriptado = await cifrarManifesto(await sessaoDe('senha-do-drive'), manifesto([item('do-drive')]))
+    const encriptado = await cifrarManifesto(await sessaoDe('325206'), manifesto([item('do-drive')]))
     vi.mocked(drive.listarArquivos).mockResolvedValue([arquivoDrive('alvo', '2024-02-01T00:00:00.000Z', encriptado)])
 
-    await expect(adotarCofreDoDrive(contexto(await sessaoDe('outra'), manifesto([])), 'pasta-1', 'errada')).rejects.toThrow(
-      /Senha incorreta/,
-    )
+    await expect(
+      mesclarCofreLocalNoDrive(contexto(await sessaoDe('outra'), manifesto([])), 'pasta-1', 'errada'),
+    ).rejects.toThrow(/Senha incorreta/)
   })
 })

@@ -1,7 +1,7 @@
 import type { Item, Manifesto } from '@/domain/entities'
 import { abrirEnvelope } from '@/domain/envelope'
 import { mesclarManifestos } from '@/domain/fusao'
-import { decifrarComSenha } from '@/infrastructure/cripto/envelope'
+import { cifrarComChave, decifrarComChave, decifrarComSenha } from '@/infrastructure/cripto/envelope'
 import { ChaveNecessariaError } from '@/infrastructure/cripto/erros'
 import { ITERACOES_KDF } from '@/infrastructure/cripto/constantes'
 import type { SessaoCripto } from '@/infrastructure/cripto/chaveSessao'
@@ -10,7 +10,7 @@ import { base64ParaBytes, derivarChave } from '@/infrastructure/cripto/webCrypto
 import * as drive from '@/infrastructure/drive/api'
 import type { DriveFileInfo } from '@/infrastructure/drive/api'
 import { garantirPastaApp } from '@/infrastructure/drive/pasta'
-import { lerItemCache, salvarManifestoCache } from '@/infrastructure/storage/cache'
+import { lerItemCache, salvarItemCache, salvarManifestoCache } from '@/infrastructure/storage/cache'
 import { manifestoVazio } from '@/infrastructure/vault/manifestoCodec'
 import type { ContextoVault } from './contexto'
 import { cifrarManifesto, decifrarManifesto } from './vault'
@@ -110,23 +110,24 @@ export async function conectarCofreAoServidor(
   return { folderId, arquivoId, manifesto, enviados, recebidos }
 }
 
-/**
- * Abre o cofre que já existe no Drive com a senha correta dele e passa a usá-lo
- * neste dispositivo. O conteúdo do cofre local (cifrado com outra senha) deixa
- * de ser exibido — é o custo de voltar a sincronizar.
- */
-export async function adotarCofreDoDrive(
-  ctx: ContextoVault,
-  folderId: string,
-  senha: string,
-): Promise<{ arquivoId: string; manifesto: Manifesto }> {
-  const token = await ctx.tokenProvider()
+interface CofreDriveAberto {
+  arquivoId: string
+  etag?: string
+  sessao: SessaoCripto
+  manifesto: Manifesto
+}
+
+/** Abre (e valida a senha de) o cofre que já existe no Drive. */
+async function abrirCofreDoDrive(token: string, folderId: string, senha: string): Promise<CofreDriveAberto> {
   const candidatos = await listarManifestos(token, folderId)
 
   for (const candidato of candidatos) {
     let bytes: Uint8Array
+    let etag: string | undefined
     try {
-      bytes = (await drive.baixarArquivoComEtag(token, candidato.id)).bytes
+      const baixado = await drive.baixarArquivoComEtag(token, candidato.id)
+      bytes = baixado.bytes
+      etag = baixado.etag
     } catch {
       continue
     }
@@ -142,15 +143,58 @@ export async function adotarCofreDoDrive(
     const salt = base64ParaBytes(aberto.cabecalho.salt || '')
     const iterations = aberto.cabecalho.iterations || ITERACOES_KDF
     const sessao = { chave: await derivarChave(senha, salt, iterations), salt, iterations }
-    ctx.definirSessao(sessao)
-    await gravarVerificadorComSalt(ctx.vaultId, senha, salt)
-
-    const manifesto = await decifrarManifesto(sessao, bytes)
-    await salvarManifestoCache(ctx.vaultId, bytes)
-    return { arquivoId: candidato.id, manifesto }
+    return { arquivoId: candidato.id, etag, sessao, manifesto: await decifrarManifesto(sessao, bytes) }
   }
 
   throw new Error('Senha incorreta para o cofre do Google Drive.')
+}
+
+/**
+ * Conflito de cofres: adota o cofre do Drive (senha correta) **sem perder o
+ * conteúdo local**. Os itens deste dispositivo foram cifrados com outra chave,
+ * então são decifrados com a chave local, recifrados com a chave do Drive e
+ * enviados; o manifesto resultante é a união dos dois.
+ */
+export async function mesclarCofreLocalNoDrive(
+  ctx: ContextoVault,
+  folderId: string,
+  senha: string,
+): Promise<ResultadoConexao> {
+  const token = await ctx.tokenProvider()
+  const aberto = await abrirCofreDoDrive(token, folderId, senha)
+  const sessaoLocal = ctx.obterSessao()
+  const local = ctx.lerManifesto() ?? manifestoVazio()
+
+  let enviados = 0
+  const itensLocais: Item[] = []
+  for (const item of local.itens) {
+    const envelopeLocal = sessaoLocal ? lerItemCache(ctx.vaultId, item.id) : undefined
+    if (!envelopeLocal) {
+      // Sem conteúdo local para migrar: só mantém o item se ele existe no Drive.
+      if (aberto.manifesto.itens.some((r) => r.id === item.id)) itensLocais.push(item)
+      continue
+    }
+    if (!sessaoLocal) continue
+
+    const comprimido = await decifrarComChave(sessaoLocal.chave, envelopeLocal)
+    const envelopeNovo = await cifrarComChave(aberto.sessao.chave, comprimido)
+    const blobId = await drive.criarArquivoMultipart(token, item.id, envelopeNovo, folderId)
+    await salvarItemCache(ctx.vaultId, item.id, envelopeNovo)
+    itensLocais.push({ ...item, blobId })
+    enviados += 1
+  }
+
+  const manifesto = mesclarManifestos({ ...local, itens: itensLocais }, aberto.manifesto)
+  const envelope = await cifrarManifesto(aberto.sessao, manifesto)
+  await atualizarManifesto(token, aberto.arquivoId, envelope, aberto.etag)
+  await salvarManifestoCache(ctx.vaultId, envelope)
+
+  ctx.definirSessao(aberto.sessao)
+  await gravarVerificadorComSalt(ctx.vaultId, senha, aberto.sessao.salt)
+
+  const idsLocais = new Set(local.itens.map((i) => i.id))
+  const recebidos = aberto.manifesto.itens.filter((i) => !idsLocais.has(i.id)).length
+  return { folderId, arquivoId: aberto.arquivoId, manifesto, enviados, recebidos }
 }
 
 async function atualizarManifesto(

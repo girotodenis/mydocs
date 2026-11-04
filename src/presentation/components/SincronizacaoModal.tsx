@@ -55,15 +55,16 @@ export function SincronizacaoModal() {
         <p className="flex gap-2 rounded-lg bg-amber-50 p-3 text-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <span>
-            O cofre que está no Drive foi cifrado com <strong>outra senha</strong> e não pode ser aberto com a deste
-            dispositivo. Escolha como continuar:
+            O cofre do Google Drive foi criado em outro dispositivo e usa uma <strong>chave diferente</strong> desta
+            (mesmo que a senha seja a mesma, cada cofre tem seu próprio salt). Escolha como continuar:
           </span>
         </p>
 
         <form onSubmit={(event) => void entrarComSenha(event)} className="space-y-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
-          <p className="font-semibold text-slate-900 dark:text-slate-100">1. Entrar com a senha correta</p>
+          <p className="font-semibold text-slate-900 dark:text-slate-100">1. Abrir o cofre do Drive e juntar tudo</p>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Abre o cofre do Drive. O conteúdo criado neste dispositivo com a outra senha deixa de ser sincronizado.
+            Informe a senha do cofre do Drive (pode ser a mesma que você usa aqui). Os arquivos criados neste
+            dispositivo são recifrados e enviados — <strong>nada é perdido</strong>.
           </p>
           <input
             type="password"
@@ -80,7 +81,7 @@ export function SincronizacaoModal() {
             className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
           >
             {acao === 'entrar' ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <RefreshCw className="h-4 w-4" aria-hidden />}
-            {acao === 'entrar' ? 'Abrindo…' : 'Abrir cofre do Drive'}
+            {acao === 'entrar' ? 'Juntando cofres…' : 'Abrir e juntar com o cofre do Drive'}
           </button>
         </form>
 
