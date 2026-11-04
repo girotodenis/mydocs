@@ -64,7 +64,7 @@ export function EditorPage() {
           value={titulo}
           onChange={(e) => setTitulo(e.target.value)}
           placeholder="Título da nota"
-          className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+          className="min-w-0 flex-1 basis-full rounded-lg border border-slate-300 px-3 py-2 text-base sm:basis-auto sm:text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
         />
         <div className="flex rounded-lg border border-slate-300 p-0.5 dark:border-slate-700">
           {(

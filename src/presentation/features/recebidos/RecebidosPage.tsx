@@ -120,7 +120,7 @@ export function RecebidosPage() {
             value={senha}
             onChange={(event) => setSenha(event.target.value)}
             enterKeyHint="go"
-            className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+            className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-base sm:text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
           />
           <button
             type="submit"

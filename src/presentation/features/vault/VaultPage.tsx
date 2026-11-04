@@ -22,8 +22,17 @@ import type { Item, PastaId } from '@/domain/entities'
 import { itensDaPasta, resolverCaminho, subpastasDe } from '@/domain/arvore'
 import { formatarBytes } from '@/domain/tamanho'
 import { MAX_FILE_BYTES } from '@/infrastructure/config'
+import { cn } from '@/presentation/cn'
 import { useVault } from '@/presentation/app/providers/vaultProvider'
 import { useLoading } from '@/presentation/app/providers/loadingProvider'
+import { ItemPreviewModal } from '@/presentation/components/ItemPreviewModal'
+
+const acaoIcone =
+  'inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800'
+
+function ehEditavel(item: Item) {
+  return item.mime.startsWith('text/') || item.mime === 'application/json' || item.mime === 'application/xml'
+}
 
 export function VaultPage() {
   const vault = useVault()
@@ -31,6 +40,7 @@ export function VaultPage() {
   const [senha, setSenha] = useState('')
   const [pastaAtual, setPastaAtualState] = useState<PastaId | null>(null)
   const [carregando, setCarregando] = useState(false)
+  const [itemAberto, setItemAberto] = useState<Item | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   function definirPasta(p: PastaId | null) {
@@ -53,6 +63,10 @@ export function VaultPage() {
   const pastas = useMemo(() => (vault.manifesto ? subpastasDe(vault.manifesto, pastaAtual) : []), [vault.manifesto, pastaAtual])
   const itens = useMemo(() => (vault.manifesto ? itensDaPasta(vault.manifesto, pastaAtual) : []), [vault.manifesto, pastaAtual])
   const caminho = useMemo(() => (vault.manifesto ? resolverCaminho(vault.manifesto, pastaAtual) : []), [vault.manifesto, pastaAtual])
+  const itemSelecionado = useMemo(
+    () => (itemAberto ? (vault.manifesto?.itens.find((i) => i.id === itemAberto.id) ?? null) : null),
+    [itemAberto, vault.manifesto],
+  )
 
   async function entrarNoCofre(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -194,7 +208,7 @@ export function VaultPage() {
             autoComplete="current-password"
             enterKeyHint="go"
             aria-label="Senha do cofre"
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-base sm:text-sm dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
           />
           <button
             type="submit"
@@ -234,21 +248,29 @@ export function VaultPage() {
         void enviarArquivos(e.dataTransfer.files)
       }}
     >
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-          <button type="button" onClick={() => definirPasta(null)} className="font-medium hover:text-brand-600">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1 text-sm text-slate-600 sm:pb-0 dark:text-slate-300">
+          <button
+            type="button"
+            onClick={() => definirPasta(null)}
+            className="shrink-0 whitespace-nowrap font-medium hover:text-brand-600"
+          >
             Raiz
           </button>
           {caminho.map((p) => (
-            <span key={p.id} className="flex items-center gap-2">
+            <span key={p.id} className="flex shrink-0 items-center gap-2">
               <span className="text-slate-400">/</span>
-              <button type="button" onClick={() => definirPasta(p.id)} className="font-medium hover:text-brand-600">
+              <button
+                type="button"
+                onClick={() => definirPasta(p.id)}
+                className="whitespace-nowrap font-medium hover:text-brand-600"
+              >
                 {p.nome}
               </button>
             </span>
           ))}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {pastaAtual ? (
             <button
               type="button"
@@ -277,7 +299,7 @@ export function VaultPage() {
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            className="inline-flex items-center gap-1.5 rounded-full bg-brand-600 px-4 py-1.5 text-xs font-bold text-white shadow-md shadow-brand-600/30"
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-brand-600 px-4 py-2 text-xs font-bold text-white shadow-md shadow-brand-600/30 sm:w-auto"
           >
             <Upload className="h-3.5 w-3.5" aria-hidden />
             Enviar arquivos
@@ -293,57 +315,139 @@ export function VaultPage() {
           {pastas.map((p) => (
             <div
               key={p.id}
-              className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900"
+              className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900 sm:gap-3"
             >
-              <Folder className="h-5 w-5 text-brand-500" aria-hidden />
-              <button type="button" onClick={() => definirPasta(p.id)} className="flex-1 text-left font-medium text-slate-900 hover:text-brand-600 dark:text-slate-100">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-100 dark:bg-slate-800">
+                <Folder className="h-4 w-4 text-brand-500" aria-hidden />
+              </span>
+              <button
+                type="button"
+                onClick={() => definirPasta(p.id)}
+                className="min-w-0 flex-1 truncate text-left font-medium text-slate-900 hover:text-brand-600 dark:text-slate-100"
+                title={p.nome}
+              >
                 {p.nome}
               </button>
-              <button type="button" onClick={() => renomearPasta(p.id, p.nome)} className="p-1.5 text-slate-400 hover:text-brand-600" aria-label="Renomear">
+              <button
+                type="button"
+                onClick={() => renomearPasta(p.id, p.nome)}
+                className={cn(acaoIcone, 'hover:text-brand-600')}
+                aria-label={`Renomear ${p.nome}`}
+                title="Renomear"
+              >
                 <Pencil className="h-4 w-4" aria-hidden />
               </button>
-              <button type="button" onClick={() => excluirPasta(p.id)} className="p-1.5 text-slate-400 hover:text-red-600" aria-label="Excluir">
+              <button
+                type="button"
+                onClick={() => excluirPasta(p.id)}
+                className={cn(acaoIcone, 'hover:text-red-600')}
+                aria-label={`Excluir ${p.nome}`}
+                title="Excluir"
+              >
                 <Trash2 className="h-4 w-4" aria-hidden />
               </button>
             </div>
           ))}
+
           {itens.map((item) => (
             <div
               key={item.id}
-              className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900"
+              className="rounded-xl border border-slate-200 bg-white p-3 transition-colors hover:border-brand-200 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-brand-500/40"
             >
-              {item.mime.startsWith('image/') ? <Image className="h-5 w-5 text-emerald-500" aria-hidden /> : <FileText className="h-5 w-5 text-brand-500" aria-hidden />}
-              <Link to={`/item/${item.id}`} className="flex-1 truncate font-medium text-slate-900 hover:text-brand-600 dark:text-slate-100">
-                {item.nome}
-              </Link>
-              <span className="hidden text-xs text-slate-400 sm:inline">{formatarBytes(item.tamanho)}</span>
-              <Link to={`/item/${item.id}`} className="p-1.5 text-slate-400 hover:text-brand-600" aria-label="Visualizar">
-                <Eye className="h-4 w-4" aria-hidden />
-              </Link>
-              {(item.mime.startsWith('text/') || item.mime === 'application/json' || item.mime === 'application/xml') ? (
-                <Link to={`/editor/${item.id}`} className="p-1.5 text-slate-400 hover:text-brand-600" aria-label="Editar">
-                  <Pencil className="h-4 w-4" aria-hidden />
-                </Link>
-              ) : null}
-              <button type="button" onClick={() => void baixar(item)} className="p-1.5 text-slate-400 hover:text-brand-600" aria-label="Baixar">
-                <Download className="h-4 w-4" aria-hidden />
-              </button>
-              <button type="button" onClick={() => compartilhar(item)} className="p-1.5 text-slate-400 hover:text-brand-600" aria-label="Compartilhar">
-                <Share2 className="h-4 w-4" aria-hidden />
-              </button>
-              <button type="button" onClick={() => moverItem(item.id)} className="p-1.5 text-slate-400 hover:text-brand-600" aria-label="Mover">
-                <FolderInput className="h-4 w-4" aria-hidden />
-              </button>
-              <button type="button" onClick={() => renomearItem(item.id, item.nome)} className="p-1.5 text-slate-400 hover:text-brand-600" aria-label="Renomear">
-                <Pencil className="h-4 w-4" aria-hidden />
-              </button>
-              <button type="button" onClick={() => excluirItem(item.id)} className="p-1.5 text-slate-400 hover:text-red-600" aria-label="Excluir">
-                <Trash2 className="h-4 w-4" aria-hidden />
-              </button>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-100 dark:bg-slate-800">
+                  {item.mime.startsWith('image/') ? (
+                    <Image className="h-4 w-4 text-emerald-500" aria-hidden />
+                  ) : (
+                    <FileText className="h-4 w-4 text-brand-500" aria-hidden />
+                  )}
+                </span>
+
+                <div className="min-w-0 flex-1">
+                  <button
+                    type="button"
+                    onClick={() => setItemAberto(item)}
+                    className="block w-full truncate text-left font-medium text-slate-900 hover:text-brand-600 dark:text-slate-100"
+                    title={item.nome}
+                  >
+                    {item.nome}
+                  </button>
+                  <p className="truncate text-xs text-slate-400">{formatarBytes(item.tamanho)}</p>
+                </div>
+
+                <div className="flex w-full flex-wrap items-center justify-end gap-0.5 border-t border-slate-100 pt-2 sm:w-auto sm:flex-nowrap sm:border-0 sm:pt-0 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setItemAberto(item)}
+                    className={cn(acaoIcone, 'hover:text-brand-600')}
+                    aria-label={`Visualizar ${item.nome}`}
+                    title="Visualizar"
+                  >
+                    <Eye className="h-4 w-4" aria-hidden />
+                  </button>
+                  {ehEditavel(item) ? (
+                    <Link
+                      to={`/editor/${item.id}`}
+                      className={cn(acaoIcone, 'hover:text-brand-600')}
+                      aria-label={`Editar ${item.nome}`}
+                      title="Editar"
+                    >
+                      <Pencil className="h-4 w-4" aria-hidden />
+                    </Link>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => void baixar(item)}
+                    className={cn(acaoIcone, 'hover:text-brand-600')}
+                    aria-label={`Baixar ${item.nome}`}
+                    title="Baixar"
+                  >
+                    <Download className="h-4 w-4" aria-hidden />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => compartilhar(item)}
+                    className={cn(acaoIcone, 'hover:text-brand-600')}
+                    aria-label={`Compartilhar ${item.nome}`}
+                    title="Compartilhar"
+                  >
+                    <Share2 className="h-4 w-4" aria-hidden />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => moverItem(item.id)}
+                    className={cn(acaoIcone, 'hover:text-brand-600')}
+                    aria-label={`Mover ${item.nome}`}
+                    title="Mover"
+                  >
+                    <FolderInput className="h-4 w-4" aria-hidden />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => renomearItem(item.id, item.nome)}
+                    className={cn(acaoIcone, 'hover:text-brand-600')}
+                    aria-label={`Renomear ${item.nome}`}
+                    title="Renomear"
+                  >
+                    <Pencil className="h-4 w-4" aria-hidden />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => excluirItem(item.id)}
+                    className={cn(acaoIcone, 'hover:text-red-600')}
+                    aria-label={`Excluir ${item.nome}`}
+                    title="Excluir"
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden />
+                  </button>
+                </div>
+              </div>
             </div>
           ))}
         </div>
       )}
+
+      <ItemPreviewModal item={itemSelecionado} onFechar={() => setItemAberto(null)} />
     </div>
   )
 }
